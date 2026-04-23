@@ -1,0 +1,8 @@
+---
+# Standalone post-upgrade validation. Phase 1 stub; Phase 2 extends to include
+# DO/AS3 drift re-apply via the f5_postcheck role.
+- name: NexusF5 validate
+  hosts: "{{ target_group | default('lab') }}"
+  gather_facts: false
+  roles:
+    - role: f5_preflight

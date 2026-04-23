@@ -1,0 +1,150 @@
+---
+# f5_preflight — gather pre-upgrade health state and assert readiness.
+#
+# Phase 1 uses ansible.builtin.uri (flagged `# raw-icontrol-rest`) because the
+# mock implements an intentional subset of iControl REST; bigip_device_info
+# from f5networks.f5_bigip queries far more than the mock responds to. Phase 2
+# revisits endpoints one-by-one as the mock surface grows.
+
+- name: Preflight | fetch version
+  # raw-icontrol-rest
+  # GET /mgmt/tm/sys/version
+  ansible.builtin.uri:
+    url: "{{ f5_api_base_url }}/mgmt/tm/sys/version"
+    method: GET
+    user: "{{ f5_api_user }}"
+    password: "{{ f5_api_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ f5_validate_certs }}"
+    return_content: true
+    timeout: "{{ f5_api_timeout }}"
+  register: f5_preflight_version
+  tags: [preflight, always]
+
+- name: Preflight | fetch HA failover status
+  # raw-icontrol-rest
+  # GET /mgmt/tm/cm/failover-status
+  ansible.builtin.uri:
+    url: "{{ f5_api_base_url }}/mgmt/tm/cm/failover-status"
+    method: GET
+    user: "{{ f5_api_user }}"
+    password: "{{ f5_api_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ f5_validate_certs }}"
+    return_content: true
+    timeout: "{{ f5_api_timeout }}"
+  register: f5_preflight_failover
+  tags: [preflight]
+
+- name: Preflight | fetch HA sync status
+  # raw-icontrol-rest
+  # GET /mgmt/tm/cm/sync-status
+  ansible.builtin.uri:
+    url: "{{ f5_api_base_url }}/mgmt/tm/cm/sync-status"
+    method: GET
+    user: "{{ f5_api_user }}"
+    password: "{{ f5_api_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ f5_validate_certs }}"
+    return_content: true
+    timeout: "{{ f5_api_timeout }}"
+  register: f5_preflight_sync
+  tags: [preflight]
+
+- name: Preflight | fetch performance stats
+  # raw-icontrol-rest
+  # GET /mgmt/tm/sys/performance/all-stats
+  ansible.builtin.uri:
+    url: "{{ f5_api_base_url }}/mgmt/tm/sys/performance/all-stats"
+    method: GET
+    user: "{{ f5_api_user }}"
+    password: "{{ f5_api_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ f5_validate_certs }}"
+    return_content: true
+    timeout: "{{ f5_api_timeout }}"
+  register: f5_preflight_perf
+  tags: [preflight]
+
+- name: Preflight | set facts from responses
+  vars:
+    _version_entry: "{{ (f5_preflight_version.json.entries.values() | list | first).nestedStats.entries }}"
+    _failover_entry: "{{ (f5_preflight_failover.json.entries.values() | list | first).nestedStats.entries }}"
+    _sync_entry: "{{ (f5_preflight_sync.json.entries.values() | list | first).nestedStats.entries }}"
+    _perf_entries: "{{ f5_preflight_perf.json.entries }}"
+    _cpu_key: "https://localhost/mgmt/tm/sys/performance/all-stats/CPU%20Usage"
+    _mem_key: "https://localhost/mgmt/tm/sys/performance/all-stats/Memory%20Used"
+    _conn_key: "https://localhost/mgmt/tm/sys/performance/all-stats/Active%20Connections"
+  ansible.builtin.set_fact:
+    f5_fact_version: "{{ _version_entry.Version.description }}"
+    f5_fact_ha_status: "{{ _failover_entry.status.description }}"
+    f5_fact_ha_color: "{{ _failover_entry.color.description }}"
+    f5_fact_sync_status: "{{ _sync_entry.status.description }}"
+    f5_fact_sync_color: "{{ _sync_entry.color.description }}"
+    f5_fact_cpu_pct: "{{ _perf_entries[_cpu_key].nestedStats.entries.Current.description | float }}"
+    f5_fact_mem_pct: "{{ _perf_entries[_mem_key].nestedStats.entries.Current.description | float }}"
+    f5_fact_connections: "{{ _perf_entries[_conn_key].nestedStats.entries.Current.description | int }}"
+  tags: [preflight]
+
+- name: Preflight | summarise
+  ansible.builtin.debug:
+    msg:
+      - "host={{ inventory_hostname }}"
+      - "version={{ f5_fact_version }}"
+      - "ha={{ f5_fact_ha_status }} ({{ f5_fact_ha_color }})"
+      - "sync={{ f5_fact_sync_status }} ({{ f5_fact_sync_color }})"
+      - "cpu={{ f5_fact_cpu_pct }}% mem={{ f5_fact_mem_pct }}% conns={{ f5_fact_connections }}"
+  tags: [preflight]
+
+- name: Preflight | assert HA color not red
+  ansible.builtin.assert:
+    that:
+      - f5_fact_ha_color != 'red'
+    fail_msg: >-
+      HA color red on {{ inventory_hostname }} — aborting.
+      See runbooks/01-preflight-failure.md
+    success_msg: "HA color ok ({{ f5_fact_ha_color }})"
+  when: f5_preflight_fail_on_red | bool
+  tags: [preflight]
+
+- name: Preflight | assert sync status In Sync
+  ansible.builtin.assert:
+    that:
+      - f5_fact_sync_status == 'In Sync'
+    fail_msg: >-
+      Sync status {{ f5_fact_sync_status }} on {{ inventory_hostname }} — aborting.
+      See runbooks/01-preflight-failure.md
+    success_msg: "Sync status ok (In Sync)"
+  when: f5_preflight_fail_on_red | bool
+  tags: [preflight]
+
+- name: Preflight | assert CPU under threshold
+  ansible.builtin.assert:
+    that:
+      - f5_fact_cpu_pct | float < f5_preflight_cpu_max_pct | float
+    fail_msg: >-
+      CPU {{ f5_fact_cpu_pct }}% exceeds {{ f5_preflight_cpu_max_pct }}% on
+      {{ inventory_hostname }}. See runbooks/01-preflight-failure.md
+    success_msg: "CPU ok ({{ f5_fact_cpu_pct }}%)"
+  tags: [preflight]
+
+- name: Preflight | assert memory under threshold
+  ansible.builtin.assert:
+    that:
+      - f5_fact_mem_pct | float < f5_preflight_mem_max_pct | float
+    fail_msg: >-
+      Memory {{ f5_fact_mem_pct }}% exceeds {{ f5_preflight_mem_max_pct }}% on
+      {{ inventory_hostname }}. See runbooks/01-preflight-failure.md
+    success_msg: "Memory ok ({{ f5_fact_mem_pct }}%)"
+  tags: [preflight]
+
+- name: Preflight | assert connection count under ceiling
+  ansible.builtin.assert:
+    that:
+      - f5_fact_connections | int < f5_preflight_connections_max | int
+    fail_msg: >-
+      Connections {{ f5_fact_connections }} exceeds
+      {{ f5_preflight_connections_max }} on {{ inventory_hostname }}.
+      See runbooks/01-preflight-failure.md
+    success_msg: "Connections ok ({{ f5_fact_connections }})"
+  tags: [preflight]

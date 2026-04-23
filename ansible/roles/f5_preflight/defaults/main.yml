@@ -1,0 +1,5 @@
+---
+# Hard-fail on any red/threshold-exceeded state. Overriding this is a debugging
+# aid only — production runs must keep it true (see CLAUDE.md: health gates
+# are hard gates).
+f5_preflight_fail_on_red: true

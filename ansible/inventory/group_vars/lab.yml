@@ -1,0 +1,3 @@
+---
+# Lab group overrides — mock-backed devices on localhost.
+f5_environment: lab

@@ -1,0 +1,5 @@
+---
+# Canary group — placeholder; populated in Phase 3 when inventory grows.
+# Canary runs serially and fails the wave on any per-device failure.
+f5_wave: canary
+f5_wave_parallelism: 1

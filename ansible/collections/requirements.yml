@@ -1,0 +1,20 @@
+---
+# Collection pins: reproducibility matters for a portfolio repo. These are
+# specific versions, not "latest". Bump deliberately after confirming against
+# the mock test suite.
+collections:
+  - name: f5networks.f5_modules
+    # Long-standing collection; 1.x is the stable line covering the
+    # install/reboot modules the Phase 2 upgrade role will use.
+    version: "1.38.0"
+
+  - name: f5networks.f5_bigip
+    # Newer collection preferred per CLAUDE.md conventions. 3.x covers the
+    # DO/AS3 orchestration helpers used from Phase 2 onward.
+    version: "3.13.0"
+
+  - name: ansible.utils
+    version: ">=4.0.0,<5.0.0"
+
+  - name: community.general
+    version: ">=9.0.0,<10.0.0"

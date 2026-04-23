@@ -1,0 +1,12 @@
+---
+profile: moderate
+
+# ansible-lint needs explicit role search paths when playbooks live under
+# ansible/playbooks/ and roles under ansible/roles/ at the project root.
+extra_vars:
+  ansible_roles_path: "ansible/roles"
+
+exclude_paths:
+  - ansible/collections/ansible_collections/
+  - .venv/
+  - .omc/

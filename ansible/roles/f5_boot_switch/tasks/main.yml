@@ -1,0 +1,86 @@
+---
+# f5_boot_switch — flip the boot target to the requested volume, reboot, wait
+# for the device to return at the target version.
+#
+# Two callers:
+#   - Upgrade flow: activates the just-installed inactive volume.
+#   - Rollback flow: activates whichever volume carries the prior version.
+# The role is the same either way; the caller sets `f5_boot_switch_target_volume`
+# and `f5_boot_switch_target_version` before invoking.
+
+- name: Boot switch | activate target volume
+  # raw-icontrol-rest
+  # PATCH /mgmt/tm/sys/software/volume/{volume}
+  ansible.builtin.uri:
+    url: "{{ f5_api_base_url }}/mgmt/tm/sys/software/volume/{{ f5_boot_switch_target_volume }}"
+    method: PATCH
+    user: "{{ f5_api_user }}"
+    password: "{{ f5_api_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ f5_validate_certs }}"
+    body_format: json
+    body:
+      active: true
+    timeout: "{{ f5_api_timeout }}"
+  tags: [reboot]
+
+- name: Boot switch | reboot
+  # raw-icontrol-rest
+  # POST /mgmt/tm/util/bash  — utilCmdArgs carries `tmsh reboot`
+  ansible.builtin.uri:
+    url: "{{ f5_api_base_url }}/mgmt/tm/util/bash"
+    method: POST
+    user: "{{ f5_api_user }}"
+    password: "{{ f5_api_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ f5_validate_certs }}"
+    body_format: json
+    body:
+      command: run
+      utilCmdArgs: "-c 'tmsh save sys config; reboot'"
+    timeout: "{{ f5_api_timeout }}"
+  tags: [reboot]
+
+- name: Boot switch | wait for device to return and assert version
+  # Block + rescue so the runbook reference surfaces whether the poll
+  # exhausts (timeout) or the version assertion fails. Without this the
+  # until-exhaustion failure produces a generic ansible message.
+  tags: [reboot]
+  block:
+    - name: Boot switch | wait for device to return at target version
+      # raw-icontrol-rest
+      # GET /mgmt/tm/sys/version
+      ansible.builtin.uri:
+        url: "{{ f5_api_base_url }}/mgmt/tm/sys/version"
+        method: GET
+        user: "{{ f5_api_user }}"
+        password: "{{ f5_api_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ f5_validate_certs }}"
+        return_content: true
+        timeout: "{{ f5_api_timeout }}"
+        status_code: [200, 503]
+      register: f5_postboot_version
+      until:
+        - f5_postboot_version.status == 200
+        - (f5_postboot_version.json.entries.values() | list | first).nestedStats.entries.Version.description == f5_boot_switch_target_version
+      retries: "{{ f5_boot_switch_poll_retries }}"
+      delay: "{{ f5_boot_switch_poll_delay }}"
+
+    - name: Boot switch | assert version matches target
+      ansible.builtin.assert:
+        that:
+          - (f5_postboot_version.json.entries.values() | list | first).nestedStats.entries.Version.description == f5_boot_switch_target_version
+        fail_msg: >-
+          Post-boot version on {{ inventory_hostname }} is not
+          {{ f5_boot_switch_target_version }}. See runbooks/03-post-boot-unhealthy.md
+        success_msg: "Device returned at {{ f5_boot_switch_target_version }}"
+
+  rescue:
+    - name: Boot switch | fail with runbook reference
+      ansible.builtin.fail:
+        msg: >-
+          Post-boot wait failed on {{ inventory_hostname }} — device did not
+          return at {{ f5_boot_switch_target_version }} within
+          {{ f5_boot_switch_poll_retries }} * {{ f5_boot_switch_poll_delay }}s.
+          See runbooks/03-post-boot-unhealthy.md

@@ -1,0 +1,6 @@
+---
+# Poll budget for install completion. Default 60 × 10s = 10 minutes. Lab
+# group_vars lowers these to keep test runs fast against a mock with
+# MOCK_INSTALL_SECONDS=0.
+f5_image_install_poll_retries: 60
+f5_image_install_poll_delay: 10

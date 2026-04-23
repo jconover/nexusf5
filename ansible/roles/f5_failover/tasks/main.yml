@@ -1,0 +1,49 @@
+---
+# f5_failover — idempotent traffic failover.
+#
+# Checks current HA state before acting. If already STANDBY, nothing to do.
+# Re-running this role on an already-failed-over device is a no-op.
+
+- name: Failover | fetch current state
+  # raw-icontrol-rest
+  # GET /mgmt/tm/cm/failover-status
+  ansible.builtin.uri:
+    url: "{{ f5_api_base_url }}/mgmt/tm/cm/failover-status"
+    method: GET
+    user: "{{ f5_api_user }}"
+    password: "{{ f5_api_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ f5_validate_certs }}"
+    return_content: true
+    timeout: "{{ f5_api_timeout }}"
+  register: f5_failover_current
+  tags: [failover]
+
+- name: Failover | set fact for current state
+  ansible.builtin.set_fact:
+    f5_failover_current_state: "{{ (f5_failover_current.json.entries.values() | list | first).nestedStats.entries.status.description }}"
+  tags: [failover]
+
+- name: Failover | trigger failover when currently ACTIVE
+  # raw-icontrol-rest
+  # POST /mgmt/tm/sys/failover
+  ansible.builtin.uri:
+    url: "{{ f5_api_base_url }}/mgmt/tm/sys/failover"
+    method: POST
+    user: "{{ f5_api_user }}"
+    password: "{{ f5_api_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ f5_validate_certs }}"
+    body_format: json
+    body:
+      command: run
+    timeout: "{{ f5_api_timeout }}"
+  when: f5_failover_current_state == 'ACTIVE'
+  tags: [failover]
+
+- name: Failover | summarise
+  ansible.builtin.debug:
+    msg: >-
+      Failover on {{ inventory_hostname }}:
+      {% if f5_failover_current_state == 'ACTIVE' %}triggered (was ACTIVE){% else %}skipped (was {{ f5_failover_current_state }}){% endif %}
+  tags: [failover]

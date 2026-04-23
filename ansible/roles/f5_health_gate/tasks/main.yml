@@ -1,0 +1,98 @@
+---
+# f5_health_gate — hard gate executed after a reboot completes.
+#
+# Every assertion is a gate. There is no ignore_errors anywhere in this
+# role. A failed assertion aborts the wave and points at the matching
+# runbook. This is the Phase 2 acceptance: the gate either blocks bad
+# upgrades or it does not exist. Do not weaken it.
+
+- name: Health gate | fetch version
+  # raw-icontrol-rest
+  # GET /mgmt/tm/sys/version
+  ansible.builtin.uri:
+    url: "{{ f5_api_base_url }}/mgmt/tm/sys/version"
+    method: GET
+    user: "{{ f5_api_user }}"
+    password: "{{ f5_api_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ f5_validate_certs }}"
+    return_content: true
+    timeout: "{{ f5_api_timeout }}"
+  register: f5_healthgate_version
+  tags: [healthgate]
+
+- name: Health gate | fetch failover status
+  # raw-icontrol-rest
+  # GET /mgmt/tm/cm/failover-status
+  ansible.builtin.uri:
+    url: "{{ f5_api_base_url }}/mgmt/tm/cm/failover-status"
+    method: GET
+    user: "{{ f5_api_user }}"
+    password: "{{ f5_api_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ f5_validate_certs }}"
+    return_content: true
+    timeout: "{{ f5_api_timeout }}"
+  register: f5_healthgate_failover
+  tags: [healthgate]
+
+- name: Health gate | fetch sync status
+  # raw-icontrol-rest
+  # GET /mgmt/tm/cm/sync-status
+  ansible.builtin.uri:
+    url: "{{ f5_api_base_url }}/mgmt/tm/cm/sync-status"
+    method: GET
+    user: "{{ f5_api_user }}"
+    password: "{{ f5_api_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ f5_validate_certs }}"
+    return_content: true
+    timeout: "{{ f5_api_timeout }}"
+  register: f5_healthgate_sync
+  tags: [healthgate]
+
+- name: Health gate | extract key values
+  vars:
+    _ver_entry: "{{ (f5_healthgate_version.json.entries.values() | list | first).nestedStats.entries }}"
+    _fo_entry: "{{ (f5_healthgate_failover.json.entries.values() | list | first).nestedStats.entries }}"
+    _sync_entry: "{{ (f5_healthgate_sync.json.entries.values() | list | first).nestedStats.entries }}"
+  ansible.builtin.set_fact:
+    f5_healthgate_fact_version: "{{ _ver_entry.Version.description }}"
+    f5_healthgate_fact_ha_color: "{{ _fo_entry.color.description }}"
+    f5_healthgate_fact_ha_status: "{{ _fo_entry.status.description }}"
+    f5_healthgate_fact_sync_color: "{{ _sync_entry.color.description }}"
+    f5_healthgate_fact_sync_status: "{{ _sync_entry.status.description }}"
+  tags: [healthgate]
+
+- name: Health gate | assert running version matches target
+  ansible.builtin.assert:
+    that:
+      - f5_healthgate_fact_version == f5_target_version
+    fail_msg: >-
+      Running version {{ f5_healthgate_fact_version }} on {{ inventory_hostname }}
+      does not match target {{ f5_target_version }}.
+      See runbooks/03-post-boot-unhealthy.md
+    success_msg: "Version ok ({{ f5_healthgate_fact_version }})"
+  tags: [healthgate]
+
+- name: Health gate | assert HA not red
+  ansible.builtin.assert:
+    that:
+      - f5_healthgate_fact_ha_color != 'red'
+      - f5_healthgate_fact_ha_status != 'FORCED OFFLINE'
+    fail_msg: >-
+      HA {{ f5_healthgate_fact_ha_status }} / color {{ f5_healthgate_fact_ha_color }}
+      on {{ inventory_hostname }}. See runbooks/03-post-boot-unhealthy.md
+    success_msg: "HA ok ({{ f5_healthgate_fact_ha_status }}, {{ f5_healthgate_fact_ha_color }})"
+  tags: [healthgate]
+
+- name: Health gate | assert sync not disconnected
+  ansible.builtin.assert:
+    that:
+      - f5_healthgate_fact_sync_status != 'Disconnected'
+      - f5_healthgate_fact_sync_color != 'red'
+    fail_msg: >-
+      Sync {{ f5_healthgate_fact_sync_status }} / color {{ f5_healthgate_fact_sync_color }}
+      on {{ inventory_hostname }}. See runbooks/03-post-boot-unhealthy.md
+    success_msg: "Sync ok ({{ f5_healthgate_fact_sync_status }})"
+  tags: [healthgate]

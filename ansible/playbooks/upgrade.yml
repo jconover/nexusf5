@@ -1,9 +1,61 @@
 ---
 # NexusF5 per-device upgrade playbook.
-# Phase 1 stub: composes only f5_preflight. Phases 2+ add backup, image
-# install, boot switch, reboot, health gate, failover, postcheck.
+#
+# Required extra-vars:
+#   f5_target_version       e.g. "17.1.0"
+#   f5_target_image_name    e.g. "BIGIP-17.1.0-0.0.3.iso"
+#
+# Usage:
+#   ansible-playbook playbooks/upgrade.yml --limit bigip-lab-01 \
+#     -e f5_target_version=17.1.0 \
+#     -e f5_target_image_name=BIGIP-17.1.0-0.0.3.iso
+
 - name: NexusF5 per-device upgrade
   hosts: "{{ target_group | default('lab') }}"
   gather_facts: false
-  roles:
-    - role: f5_preflight
+  any_errors_fatal: true
+
+  pre_tasks:
+    - name: Assert required vars are set
+      ansible.builtin.assert:
+        that:
+          - f5_target_version is defined and f5_target_version | length > 0
+          - f5_target_image_name is defined and f5_target_image_name | length > 0
+        fail_msg: >-
+          upgrade.yml requires f5_target_version and f5_target_image_name.
+          Pass them via `-e` or set in inventory group_vars.
+      tags: [always]
+
+  tasks:
+    - name: Upgrade | preflight
+      ansible.builtin.include_role:
+        name: f5_preflight
+      tags: [preflight]
+
+    - name: Upgrade | backup
+      ansible.builtin.include_role:
+        name: f5_backup
+      tags: [backup]
+
+    - name: Upgrade | image install
+      ansible.builtin.include_role:
+        name: f5_image_install
+      tags: [install]
+
+    - name: Upgrade | boot switch to installed volume
+      ansible.builtin.include_role:
+        name: f5_boot_switch
+      vars:
+        f5_boot_switch_target_volume: "{{ f5_install_target_volume }}"
+        f5_boot_switch_target_version: "{{ f5_target_version }}"
+      tags: [reboot]
+
+    - name: Upgrade | health gate
+      ansible.builtin.include_role:
+        name: f5_health_gate
+      tags: [healthgate]
+
+    - name: Upgrade | postcheck
+      ansible.builtin.include_role:
+        name: f5_postcheck
+      tags: [postcheck]

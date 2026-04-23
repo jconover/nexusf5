@@ -1,0 +1,6 @@
+---
+- name: NexusF5 preflight
+  hosts: "{{ target_group | default('lab') }}"
+  gather_facts: false
+  roles:
+    - role: f5_preflight

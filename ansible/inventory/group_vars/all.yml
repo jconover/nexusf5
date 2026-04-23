@@ -1,0 +1,16 @@
+---
+# Global vars for every device in every wave.
+f5_api_user: admin
+# Mock accepts any credentials. Real environments override via Ansible Vault
+# or a workflow-provided secret — never commit real values here.
+f5_api_password: admin_pass
+f5_api_timeout: 30
+
+# Mock is HTTP; real F5 mgmt is HTTPS. Per-env group_vars flip this to true.
+f5_validate_certs: false
+
+# Preflight thresholds. Conservative defaults; per-wave group_vars may relax
+# them with justification (never in production — see CLAUDE.md).
+f5_preflight_cpu_max_pct: 80
+f5_preflight_mem_max_pct: 85
+f5_preflight_connections_max: 500000

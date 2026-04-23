@@ -1,0 +1,9 @@
+---
+# NexusF5 per-device upgrade playbook.
+# Phase 1 stub: composes only f5_preflight. Phases 2+ add backup, image
+# install, boot switch, reboot, health gate, failover, postcheck.
+- name: NexusF5 per-device upgrade
+  hosts: "{{ target_group | default('lab') }}"
+  gather_facts: false
+  roles:
+    - role: f5_preflight

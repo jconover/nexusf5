@@ -1,0 +1,12 @@
+---
+# Rollback — flip active volume back, reboot, health gate.
+# Phase 1 stub: asserts rollback is always callable standalone against a
+# single host (`-l bigip-lab-01`). Real rollback logic lands in Phase 2.
+- name: NexusF5 rollback
+  hosts: "{{ target_group | default('lab') }}"
+  gather_facts: false
+  tasks:
+    - name: Rollback placeholder
+      ansible.builtin.debug:
+        msg: "Phase 1 stub. Phase 2 implements f5_boot_switch rollback + f5_health_gate."
+      tags: [rollback]

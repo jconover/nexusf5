@@ -29,10 +29,13 @@ mock-down: ## Stop and remove the mock F5 stack
 mock-logs: ## Tail mock-f5 logs
 	$(MOCK_COMPOSE) logs -f
 
-test: mock-up ## Run pytest + preflight playbook against the mock
+test-unit: ## Fast in-process pytest run (no Docker, no ansible)
+	cd mock-f5 && uv run pytest -q --ignore=tests/integration
+
+test: mock-up ## Full suite: unit + integration (drives ansible-playbook) + preflight
 	cd mock-f5 && uv run pytest -q
 	cd ansible && ansible-playbook -i inventory/hosts.yml playbooks/preflight.yml --limit lab
-	@echo "==> Phase 1 test suite green. Mock is still up — run 'make mock-down' when done."
+	@echo "==> Test suite green. Mock is still up — run 'make mock-down' when done."
 
 integration: ## (Phase 4) AWS BIG-IP VE round-trip integration test
 	@echo "Phase 4: AWS VE integration is not implemented yet."

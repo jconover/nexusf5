@@ -62,8 +62,14 @@ pre-commit install
 
 ## Development status
 
-**Phase 1 of 5 complete.** The mock fleet + preflight role run green end-to-end.
-See [`TODO.md`](TODO.md) for the full phase plan.
+**Phase 2 of 5 complete.** Per-device upgrade + rollback works end-to-end
+against the mock fleet (happy path plus `fail-next-install`, `slow-reboot`,
+and `post-boot-unhealthy` chaos scenarios). See [`TODO.md`](TODO.md) for
+the full phase plan.
+
+Run `make test-unit` for the fast dev loop (in-process, ~0.4s). Run
+`make test` for the full suite including integration tests that drive
+`upgrade.yml` / `rollback.yml` against the live mock stack (~6 minutes).
 
 ## Further reading
 

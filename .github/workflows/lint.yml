@@ -1,0 +1,61 @@
+---
+name: lint
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.4.20"
+      - name: Sync deps
+        working-directory: mock-f5
+        run: uv sync
+      - name: Ruff check
+        working-directory: mock-f5
+        run: uv run ruff check app tests
+      - name: Ruff format check
+        working-directory: mock-f5
+        run: uv run ruff format --check app tests
+      - name: Mypy
+        working-directory: mock-f5
+        run: uv run mypy app
+      - name: Pytest
+        working-directory: mock-f5
+        run: uv run pytest -q
+
+  yaml:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install yamllint
+      - run: yamllint .
+
+  ansible:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install 'ansible-core>=2.17' ansible-lint
+      - name: Install collections
+        run: ansible-galaxy collection install -r ansible/collections/requirements.yml
+      - name: Ansible-lint
+        env:
+          ANSIBLE_ROLES_PATH: ${{ github.workspace }}/ansible/roles
+        working-directory: ansible
+        run: ansible-lint playbooks/ roles/

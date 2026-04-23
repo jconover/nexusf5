@@ -1,8 +1,8 @@
-"""Pydantic v2 models for the iControl REST request bodies the mock accepts.
+"""Pydantic v2 models for iControl REST request bodies the mock accepts.
 
 Responses are built as plain dicts in the router handlers to keep the F5
-"entries -> URL -> nestedStats -> entries" response shape explicit and
-readable. Request bodies get models so we validate on ingress.
+`entries -> URL -> nestedStats -> entries` shape explicit and readable.
+Request bodies get models so we validate on ingress.
 """
 
 from __future__ import annotations
@@ -36,5 +36,30 @@ class SoftwareVolumeCommand(IControlCommand):
     product: str = "BIG-IP"
 
 
+class VolumePatchCommand(BaseModel):
+    """PATCH /mgmt/tm/sys/software/volume/{volume} body.
+
+    Setting `active: true` flips this volume to active and every other
+    volume to inactive (only one boots next). Setting `active: false` is
+    rejected — F5's two-volume model requires exactly one active volume.
+    """
+
+    model_config = ConfigDict(extra="allow")
+    active: bool | None = None
+
+
 class FailoverCommand(IControlCommand):
     pass
+
+
+class UtilBashCommand(IControlCommand):
+    """POST /mgmt/tm/util/bash.
+
+    The mock only recognises `utilCmdArgs` strings containing `reboot` —
+    anything else is a no-op that echoes the request. Ansible roles that
+    run non-reboot bash commands against real F5 will work in prod and be
+    ignored by the mock, which is what we want for a Phase 2 runbook focused
+    on the upgrade path.
+    """
+
+    utilCmdArgs: str | None = None  # noqa: N815 — F5 wire field name, keep as-is

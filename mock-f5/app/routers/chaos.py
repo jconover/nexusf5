@@ -16,7 +16,7 @@ from prometheus_client import (
 )
 
 from app.deps import StoreDep
-from app.state import DeviceState, StateStore
+from app.state import DeviceState, HAState, StateStore, SyncState, Volume
 
 router = APIRouter()
 
@@ -99,3 +99,30 @@ def chaos_reset(hostname: str, store: StoreDep) -> dict[str, str]:
     device.chaos.drift_postcheck = False
     device.chaos.post_boot_unhealthy = False
     return {"hostname": hostname, "flag": "all", "value": "false"}
+
+
+@router.post("/_chaos/{hostname}/reset-device")
+def chaos_reset_device(hostname: str, store: StoreDep) -> dict[str, str]:
+    """Fully restore a device to its fresh (pre-upgrade) state.
+
+    Integration tests call this between scenarios so they can start from a
+    known baseline on a single long-lived container without restarting
+    docker compose. Clears chaos flags, volumes, version, operations,
+    UCS list, HA/sync, and any in-flight reboot window.
+    """
+    device = _resolve(store, hostname)
+    device.version = "16.1.3"
+    device.volumes = [
+        Volume(name="HD1.1", active=True, version="16.1.3"),
+        Volume(name="HD1.2", active=False, version="16.1.2"),
+    ]
+    device.ha_state = HAState.ACTIVE
+    device.sync_state = SyncState.IN_SYNC
+    device.operations = []
+    device.ucs_backups = []
+    device.rebooting_until = None
+    device.chaos.fail_next_install = False
+    device.chaos.slow_reboot = False
+    device.chaos.drift_postcheck = False
+    device.chaos.post_boot_unhealthy = False
+    return {"hostname": hostname, "state": "fresh"}

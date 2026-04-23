@@ -6,12 +6,18 @@ x-mock-template: &mock-template
   build:
     context: .
   restart: unless-stopped
+  # Fast timings by default so `make test` stays snappy. Override per-service
+  # or via `MOCK_INSTALL_SECONDS=900 docker compose up` for timeout scenarios.
+  environment: &mock-env
+    MOCK_INSTALL_SECONDS: "5"
+    MOCK_REBOOT_SECONDS: "5"
 
 services:
   bigip-lab-01:
     <<: *mock-template
     container_name: bigip-lab-01
     environment:
+      <<: *mock-env
       MOCK_F5_HOSTNAME: bigip-lab-01
       MOCK_F5_VERSION: 16.1.3
     ports:

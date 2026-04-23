@@ -1,0 +1,42 @@
+---
+# f5_postcheck — post-upgrade validation.
+#
+# Phase 2: validate running version matches target. Phase 4 replaces this
+# with a real DO/AS3 drift check via `terraform plan -detailed-exitcode`.
+# The chaos flag `chaos.drift_postcheck` is already wired in mock state
+# so the Phase 4 drop-in test can use it immediately.
+
+- name: Postcheck | fetch running version
+  # raw-icontrol-rest
+  # GET /mgmt/tm/sys/version
+  ansible.builtin.uri:
+    url: "{{ f5_api_base_url }}/mgmt/tm/sys/version"
+    method: GET
+    user: "{{ f5_api_user }}"
+    password: "{{ f5_api_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ f5_validate_certs }}"
+    return_content: true
+    timeout: "{{ f5_api_timeout }}"
+  register: f5_postcheck_version
+  tags: [postcheck]
+
+- name: Postcheck | set fact
+  ansible.builtin.set_fact:
+    f5_postcheck_fact_version: "{{ (f5_postcheck_version.json.entries.values() | list | first).nestedStats.entries.Version.description }}"
+  tags: [postcheck]
+
+- name: Postcheck | assert version matches target
+  ansible.builtin.assert:
+    that:
+      - f5_postcheck_fact_version == f5_target_version
+    fail_msg: >-
+      Postcheck version mismatch on {{ inventory_hostname }}:
+      running {{ f5_postcheck_fact_version }}, expected {{ f5_target_version }}.
+    success_msg: "Postcheck version ok ({{ f5_postcheck_fact_version }})"
+  tags: [postcheck]
+
+- name: Postcheck | DO/AS3 drift check (Phase 4 stub)
+  ansible.builtin.debug:
+    msg: "DO/AS3 drift check deferred to Phase 4 (terraform plan -detailed-exitcode)."
+  tags: [postcheck]

@@ -1,0 +1,5 @@
+---
+# Reboot-return poll budget. Default 60 × 10s = 10 minutes to cover a slow
+# real-world reboot. Lab overrides for fast test runs.
+f5_boot_switch_poll_retries: 60
+f5_boot_switch_poll_delay: 10

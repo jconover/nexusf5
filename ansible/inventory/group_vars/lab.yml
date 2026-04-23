@@ -1,3 +1,11 @@
 ---
 # Lab group overrides — mock-backed devices on localhost.
 f5_environment: lab
+
+# Mock defaults to MOCK_INSTALL_SECONDS=5 and MOCK_REBOOT_SECONDS=5 in the
+# compose file, so polling can be tight. Real-F5 defaults in the role stay
+# at 60 * 10s = 10 min per loop.
+f5_image_install_poll_retries: 60
+f5_image_install_poll_delay: 1
+f5_boot_switch_poll_retries: 60
+f5_boot_switch_poll_delay: 1

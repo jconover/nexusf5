@@ -1,12 +1,67 @@
 ---
-# Rollback — flip active volume back, reboot, health gate.
-# Phase 1 stub: asserts rollback is always callable standalone against a
-# single host (`-l bigip-lab-01`). Real rollback logic lands in Phase 2.
+# NexusF5 rollback playbook.
+#
+# Flips the active volume to whichever currently carries the prior version
+# (the inactive volume at rollback time) and reboots into it. The
+# BIG-IP two-volume boot model is the safety net — the orchestrator just
+# tells it which volume to boot.
+#
+# Standalone-callable per CLAUDE.md non-negotiables:
+#   ansible-playbook playbooks/rollback.yml --limit bigip-lab-01
+
 - name: NexusF5 rollback
   hosts: "{{ target_group | default('lab') }}"
   gather_facts: false
+  any_errors_fatal: true
+
   tasks:
-    - name: Rollback placeholder
-      ansible.builtin.debug:
-        msg: "Phase 1 stub. Phase 2 implements f5_boot_switch rollback + f5_health_gate."
+    - name: Rollback | list volumes
+      # raw-icontrol-rest
+      # GET /mgmt/tm/sys/software/volume
+      ansible.builtin.uri:
+        url: "{{ f5_api_base_url }}/mgmt/tm/sys/software/volume"
+        method: GET
+        user: "{{ f5_api_user }}"
+        password: "{{ f5_api_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ f5_validate_certs }}"
+        return_content: true
+        timeout: "{{ f5_api_timeout }}"
+        status_code: [200, 503]
+      register: f5_rollback_volumes
+      # Tolerate a device that is still mid-reboot when rollback starts; retry
+      # until it responds.
+      until: f5_rollback_volumes.status == 200
+      retries: "{{ f5_boot_switch_poll_retries | default(60) }}"
+      delay: "{{ f5_boot_switch_poll_delay | default(10) }}"
       tags: [rollback]
+
+    - name: Rollback | pick the inactive volume as the rollback target
+      ansible.builtin.set_fact:
+        _rb_target: "{{ (f5_rollback_volumes.json['items'] | rejectattr('active', 'equalto', true) | list | first) }}"
+      tags: [rollback]
+
+    - name: Rollback | summarise intent
+      ansible.builtin.debug:
+        msg: >-
+          Rolling back {{ inventory_hostname }} to volume {{ _rb_target.name }}
+          (version {{ _rb_target.version }}).
+      tags: [rollback]
+
+    - name: Rollback | boot switch to prior volume
+      ansible.builtin.include_role:
+        name: f5_boot_switch
+      vars:
+        f5_boot_switch_target_volume: "{{ _rb_target.name }}"
+        f5_boot_switch_target_version: "{{ _rb_target.version }}"
+      tags: [rollback, reboot]
+
+    - name: Rollback | pin target version to the rollback target
+      ansible.builtin.set_fact:
+        f5_target_version: "{{ _rb_target.version }}"
+      tags: [rollback, healthgate]
+
+    - name: Rollback | health gate against rolled-back version
+      ansible.builtin.include_role:
+        name: f5_health_gate
+      tags: [rollback, healthgate]

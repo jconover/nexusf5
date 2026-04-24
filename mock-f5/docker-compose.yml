@@ -10,6 +10,11 @@ services:
     image: nexusf5-mock:dev
     build:
       context: .
+      args:
+        # UV_VERSION is sourced from repo-root .tool-versions via the
+        # Makefile. Running `docker compose build` outside Make fails
+        # loudly here — there is no default, on purpose.
+        UV_VERSION: ${UV_VERSION:?UV_VERSION must be exported — run via make mock-build / mock-up}
     container_name: nexusf5-mock
     restart: unless-stopped
     environment:

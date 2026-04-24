@@ -1,4 +1,12 @@
 # syntax=docker/dockerfile:1.7
+
+# UV_VERSION is required; supplied by docker-compose / Makefile from the
+# repo-root .tool-versions file so the workflow, Dockerfile, and local
+# tooling stay in lockstep on a single source of truth.
+ARG UV_VERSION
+
+FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv-bin
+
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -10,7 +18,7 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends curl ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
-COPY --from=ghcr.io/astral-sh/uv:0.4.20 /uv /usr/local/bin/uv
+COPY --from=uv-bin /uv /usr/local/bin/uv
 
 WORKDIR /app
 

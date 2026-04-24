@@ -15,9 +15,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        # Pin read from .tool-versions so workflow + Dockerfile upgrades
+        # stay in lockstep; see README "Pre-push check" for the sync rule.
+        uses: astral-sh/setup-uv@v6
         with:
-          version: "0.4.20"
+          version-file: .tool-versions
       - name: Sync deps
         working-directory: mock-f5
         run: uv sync

@@ -1,4 +1,10 @@
-.PHONY: help install-deps lint test integration mock-up mock-down mock-logs mock-build clean
+.PHONY: help install-deps lint lint-ci test test-unit integration mock-up mock-down mock-logs mock-build clean
+
+# Single source of truth for the uv version. The workflow reads the same
+# file via setup-uv's version-file input; the Dockerfile takes it as a
+# build arg so the runtime image and the CI lint env never drift apart.
+UV_VERSION := $(shell awk '$$1 == "uv" {print $$2}' .tool-versions)
+export UV_VERSION
 
 MOCK_COMPOSE := docker compose -f mock-f5/docker-compose.yml
 
@@ -9,12 +15,20 @@ install-deps: ## Install Python + Ansible collection dependencies
 	cd mock-f5 && uv sync
 	ansible-galaxy collection install -r ansible/collections/requirements.yml --force
 
-lint: ## Run all linters (ruff, mypy, yamllint, ansible-lint)
+lint: ## Run all linters against host tooling — fast, for iteration
 	cd mock-f5 && uv run ruff check app tests
 	cd mock-f5 && uv run ruff format --check app tests
 	cd mock-f5 && uv run mypy app
 	yamllint .
 	cd ansible && ANSIBLE_ROLES_PATH=$(PWD)/ansible/roles ansible-lint playbooks/ roles/
+
+lint-ci: ## Run lint exactly as CI does (containerized) — authoritative pre-push check
+	@echo "==> CI-parity lint in python:3.12-slim with uv=$(UV_VERSION)"
+	docker run --rm \
+	  -v "$(PWD):/repo" -w /repo \
+	  -e UV_VERSION=$(UV_VERSION) \
+	  python:3.12-slim \
+	  bash /repo/tools/ci-lint.sh
 
 mock-build: ## Build the mock F5 docker image
 	$(MOCK_COMPOSE) build

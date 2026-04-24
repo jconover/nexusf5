@@ -42,6 +42,22 @@ hostname is the first URL path segment (`/bigip-lab-01/mgmt/tm/sys/version`).
 See [`docs/decisions/001-mock-topology.md`](docs/decisions/001-mock-topology.md)
 for the routing rationale.
 
+### Pre-push check
+
+Two lint targets, two purposes:
+
+```bash
+make lint       # fast — uses host tooling; runs in seconds, for iteration
+make lint-ci    # authoritative — runs the exact CI sequence inside a
+                # python:3.12-slim container with the pinned uv version
+                # and a fresh pip-installed ansible-lint. This is what to
+                # run before pushing a PR.
+```
+
+The split exists because host tooling can drift silently from CI
+(different uv, Debian-patched ansible-lint, stale caches) and `make lint`
+can go green while CI stays red. `make lint-ci` closes that gap.
+
 ### Optional: local pre-commit hooks
 
 CI enforces ruff, mypy, yamllint, and ansible-lint regardless. If you'd like

@@ -17,7 +17,7 @@ per CLAUDE.md non-negotiables.
 - `f5_fact_cpu_pct`, `f5_fact_mem_pct`, `f5_fact_connections`
 
 ## Required host/group vars
-- `f5_api_base_url` — e.g. `http://localhost:8101` (mock) or `https://bigip-dc1-042.example.net` (real)
+- `f5_api_base_url` — e.g. `http://localhost:8100/{{ inventory_hostname }}` (Phase 3 multiplexed mock) or `https://bigip-dc1-042.example.net` (real F5)
 - `f5_api_user`, `f5_api_password`
 - `f5_validate_certs`
 

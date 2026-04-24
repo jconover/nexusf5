@@ -18,7 +18,7 @@
     validate_certs: "{{ f5_validate_certs }}"
     return_content: true
     timeout: "{{ f5_api_timeout }}"
-  register: f5_healthgate_version
+  register: f5_health_gate_version
   tags: [healthgate]
 
 - name: Health gate | fetch failover status
@@ -33,7 +33,7 @@
     validate_certs: "{{ f5_validate_certs }}"
     return_content: true
     timeout: "{{ f5_api_timeout }}"
-  register: f5_healthgate_failover
+  register: f5_health_gate_failover
   tags: [healthgate]
 
 - name: Health gate | fetch sync status
@@ -48,51 +48,51 @@
     validate_certs: "{{ f5_validate_certs }}"
     return_content: true
     timeout: "{{ f5_api_timeout }}"
-  register: f5_healthgate_sync
+  register: f5_health_gate_sync
   tags: [healthgate]
 
 - name: Health gate | extract key values
   vars:
-    _ver_entry: "{{ (f5_healthgate_version.json.entries.values() | list | first).nestedStats.entries }}"
-    _fo_entry: "{{ (f5_healthgate_failover.json.entries.values() | list | first).nestedStats.entries }}"
-    _sync_entry: "{{ (f5_healthgate_sync.json.entries.values() | list | first).nestedStats.entries }}"
+    _ver_entry: "{{ (f5_health_gate_version.json.entries.values() | list | first).nestedStats.entries }}"
+    _fo_entry: "{{ (f5_health_gate_failover.json.entries.values() | list | first).nestedStats.entries }}"
+    _sync_entry: "{{ (f5_health_gate_sync.json.entries.values() | list | first).nestedStats.entries }}"
   ansible.builtin.set_fact:
-    f5_healthgate_fact_version: "{{ _ver_entry.Version.description }}"
-    f5_healthgate_fact_ha_color: "{{ _fo_entry.color.description }}"
-    f5_healthgate_fact_ha_status: "{{ _fo_entry.status.description }}"
-    f5_healthgate_fact_sync_color: "{{ _sync_entry.color.description }}"
-    f5_healthgate_fact_sync_status: "{{ _sync_entry.status.description }}"
+    f5_health_gate_fact_version: "{{ _ver_entry.Version.description }}"
+    f5_health_gate_fact_ha_color: "{{ _fo_entry.color.description }}"
+    f5_health_gate_fact_ha_status: "{{ _fo_entry.status.description }}"
+    f5_health_gate_fact_sync_color: "{{ _sync_entry.color.description }}"
+    f5_health_gate_fact_sync_status: "{{ _sync_entry.status.description }}"
   tags: [healthgate]
 
 - name: Health gate | assert running version matches target
   ansible.builtin.assert:
     that:
-      - f5_healthgate_fact_version == f5_target_version
+      - f5_health_gate_fact_version == f5_target_version
     fail_msg: >-
-      Running version {{ f5_healthgate_fact_version }} on {{ inventory_hostname }}
+      Running version {{ f5_health_gate_fact_version }} on {{ inventory_hostname }}
       does not match target {{ f5_target_version }}.
       See runbooks/03-post-boot-unhealthy.md
-    success_msg: "Version ok ({{ f5_healthgate_fact_version }})"
+    success_msg: "Version ok ({{ f5_health_gate_fact_version }})"
   tags: [healthgate]
 
 - name: Health gate | assert HA not red
   ansible.builtin.assert:
     that:
-      - f5_healthgate_fact_ha_color != 'red'
-      - f5_healthgate_fact_ha_status != 'FORCED OFFLINE'
+      - f5_health_gate_fact_ha_color != 'red'
+      - f5_health_gate_fact_ha_status != 'FORCED OFFLINE'
     fail_msg: >-
-      HA {{ f5_healthgate_fact_ha_status }} / color {{ f5_healthgate_fact_ha_color }}
+      HA {{ f5_health_gate_fact_ha_status }} / color {{ f5_health_gate_fact_ha_color }}
       on {{ inventory_hostname }}. See runbooks/03-post-boot-unhealthy.md
-    success_msg: "HA ok ({{ f5_healthgate_fact_ha_status }}, {{ f5_healthgate_fact_ha_color }})"
+    success_msg: "HA ok ({{ f5_health_gate_fact_ha_status }}, {{ f5_health_gate_fact_ha_color }})"
   tags: [healthgate]
 
 - name: Health gate | assert sync not disconnected
   ansible.builtin.assert:
     that:
-      - f5_healthgate_fact_sync_status != 'Disconnected'
-      - f5_healthgate_fact_sync_color != 'red'
+      - f5_health_gate_fact_sync_status != 'Disconnected'
+      - f5_health_gate_fact_sync_color != 'red'
     fail_msg: >-
-      Sync {{ f5_healthgate_fact_sync_status }} / color {{ f5_healthgate_fact_sync_color }}
+      Sync {{ f5_health_gate_fact_sync_status }} / color {{ f5_health_gate_fact_sync_color }}
       on {{ inventory_hostname }}. See runbooks/03-post-boot-unhealthy.md
-    success_msg: "Sync ok ({{ f5_healthgate_fact_sync_status }})"
+    success_msg: "Sync ok ({{ f5_health_gate_fact_sync_status }})"
   tags: [healthgate]

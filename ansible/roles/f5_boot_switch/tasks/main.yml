@@ -60,17 +60,17 @@
         return_content: true
         timeout: "{{ f5_api_timeout }}"
         status_code: [200, 503]
-      register: f5_postboot_version
+      register: f5_boot_switch_postboot_version
       until:
-        - f5_postboot_version.status == 200
-        - (f5_postboot_version.json.entries.values() | list | first).nestedStats.entries.Version.description == f5_boot_switch_target_version
+        - f5_boot_switch_postboot_version.status == 200
+        - (f5_boot_switch_postboot_version.json.entries.values() | list | first).nestedStats.entries.Version.description == f5_boot_switch_target_version
       retries: "{{ f5_boot_switch_poll_retries }}"
       delay: "{{ f5_boot_switch_poll_delay }}"
 
     - name: Boot switch | assert version matches target
       ansible.builtin.assert:
         that:
-          - (f5_postboot_version.json.entries.values() | list | first).nestedStats.entries.Version.description == f5_boot_switch_target_version
+          - (f5_boot_switch_postboot_version.json.entries.values() | list | first).nestedStats.entries.Version.description == f5_boot_switch_target_version
         fail_msg: >-
           Post-boot version on {{ inventory_hostname }} is not
           {{ f5_boot_switch_target_version }}. See runbooks/03-post-boot-unhealthy.md

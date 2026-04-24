@@ -46,7 +46,7 @@
       ansible.builtin.include_role:
         name: f5_boot_switch
       vars:
-        f5_boot_switch_target_volume: "{{ f5_install_target_volume }}"
+        f5_boot_switch_target_volume: "{{ f5_image_install_target_volume }}"
         f5_boot_switch_target_version: "{{ f5_target_version }}"
       tags: [reboot]
 

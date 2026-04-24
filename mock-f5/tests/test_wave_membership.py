@@ -73,10 +73,16 @@ def test_every_lab_device_is_in_exactly_one_wave(groups: dict[str, dict]) -> Non
 
 
 def test_wave_sizes_match_phase_3_plan(groups: dict[str, dict]) -> None:
-    # Canary is serial (small on purpose); the other waves grow modestly so
-    # the workflow can demonstrate gated fan-out without taking hours.
+    # Phase 3 split per TODO.md: canary (5) + wave_1 (45), with wave_2 /
+    # wave_3 as empty placeholders for the 500-device scale target. The
+    # size check catches drift — if someone adds a device to wave_1 without
+    # growing canary, or populates wave_2 without a TODO update, this
+    # test flags it so the plan and the inventory stay in sync.
     sizes = {wave: len(_hosts_in(groups.get(wave))) for wave in WAVE_GROUPS}
     assert sizes["canary"] == 5, f"canary should be 5 devices, got {sizes['canary']}"
+    assert sizes["wave_1"] == 45, f"wave_1 should be 45 devices, got {sizes['wave_1']}"
+    assert sizes["wave_2"] == 0, f"wave_2 should be empty in Phase 3, got {sizes['wave_2']}"
+    assert sizes["wave_3"] == 0, f"wave_3 should be empty in Phase 3, got {sizes['wave_3']}"
     assert sum(sizes.values()) == EXPECTED_DEVICE_COUNT, f"total wave population mismatch: {sizes}"
 
 

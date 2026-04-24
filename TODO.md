@@ -75,7 +75,7 @@ Upgrade a single mock device from 16.1.3 → 17.1.0 via `ansible-playbook playbo
 
 - [ ] Expand mock Compose stack to 50 devices (canary + wave 1: 5 + 45 — enough to prove the model)
 - [ ] Extend inventory: `canary`, `wave_1`, `wave_2`, `wave_3` groups with `group_vars/*.yml` setting per-wave tuning (timeouts, parallelism hints)
-- [ ] `.github/workflows/_reusable/upgrade-wave.yml` — reusable workflow:
+- [ ] `.github/workflows/_upgrade-wave-reusable.yml` — reusable workflow (top-level only — GitHub Actions rejects subdirectories under `.github/workflows/`; `_` prefix + `on: workflow_call:`-only signals "not for direct dispatch"):
   - [ ] Inputs: `wave_name`, `parallelism`, `target_version`
   - [ ] Matrix strategy dynamically built from inventory
   - [ ] Publishes one JSON artifact per device (wave, device, start, end, status, error)

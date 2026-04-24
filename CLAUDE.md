@@ -133,7 +133,7 @@ nexusf5/
 **GitHub Actions**
 
 - Environments named `canary`, `wave-1`, `wave-2`, `wave-3`, each with required reviewers.
-- Reusable workflows in `.github/workflows/_reusable/`.
+- Reusable workflows live at the top level of `.github/workflows/` (GitHub Actions rejects subdirectories). Prefix reusable files with `_` and scope `on:` to `workflow_call:` only, so both the filename and the trigger surface make it clear they are not for direct dispatch. Callers reference them with `uses: ./.github/workflows/_<name>.yml`.
 - OIDC for AWS auth. No long-lived keys ever.
 - Every job that touches a device publishes a structured JSON artifact (device, wave, start, end, status, error) that the Grafana dashboard consumes.
 - Concurrency groups per wave to prevent overlapping runs.

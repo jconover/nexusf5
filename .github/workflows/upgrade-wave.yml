@@ -58,7 +58,7 @@ on:
 
 jobs:
   wave:
-    uses: ./.github/workflows/_reusable/upgrade-wave.yml
+    uses: ./.github/workflows/_upgrade-wave-reusable.yml
     with:
       wave_name: ${{ inputs.wave_name }}
       parallelism: ${{ fromJson(inputs.parallelism) }}

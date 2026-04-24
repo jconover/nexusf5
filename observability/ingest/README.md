@@ -2,7 +2,7 @@
 
 Artifact schema, success-rate gate, and Pushgateway client for NexusF5
 wave upgrades. The three entry points are thin CLIs, each invoked by
-the reusable upgrade workflow in `.github/workflows/_reusable/`.
+the reusable upgrade workflow at `.github/workflows/_upgrade-wave-reusable.yml`.
 
 | Module | Role | Called by |
 |---|---|---|

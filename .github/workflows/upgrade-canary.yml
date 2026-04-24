@@ -1,6 +1,6 @@
 ---
 # Canary: 5 devices, serial, no prior wave to gate on. Delegates
-# straight to _reusable/upgrade-wave.yml. When CI is green here, the
+# straight to _upgrade-wave-reusable.yml. When CI is green here, the
 # wave-1 promoter (upgrade-wave.yml) uses this run's ID as
 # `prior_wave_run_id` and the gate reads the artifacts that produced
 # the green.
@@ -25,7 +25,7 @@ on:
 
 jobs:
   canary:
-    uses: ./.github/workflows/_reusable/upgrade-wave.yml
+    uses: ./.github/workflows/_upgrade-wave-reusable.yml
     with:
       wave_name: canary
       # Canary is deliberately serial — `f5_preflight_cpu_max_pct` and

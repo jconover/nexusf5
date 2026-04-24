@@ -1,17 +1,21 @@
 ---
-# Reusable: upgrade every device in one wave against the multiplexed mock.
+# Reusable workflow — NOT for direct dispatch.
 #
-# Callers (upgrade-canary.yml, upgrade-wave.yml) pass the wave name and
-# the prior wave whose artifacts gate this run. Within the wave, matrix
-# parallelism runs; between waves, the gate job runs ahead of the
-# matrix and fails closed if the prior wave's artifacts are missing,
-# malformed, or below the success threshold.
+# The `_` filename prefix is the soft signal; the `on: workflow_call:`
+# block (no workflow_dispatch, no push, nothing else) is the hard
+# enforcement. GitHub Actions requires reusable workflows to live at
+# the top level of .github/workflows/ — no subdirectories — which
+# drove this flat layout. Callers: upgrade-canary.yml, upgrade-wave.yml.
 #
-# See runbooks/05-running-a-wave.md for the operator view (GitHub
-# environments + required-reviewers setup, manual approval checkpoints,
-# what to do when the gate fails).
+# Runs one wave's device-upgrade matrix, gated on the prior wave's
+# artifacts. Inside the wave, a `parallelism`-bounded matrix runs;
+# between waves, the `gate` job fails closed on missing / empty /
+# malformed / below-threshold prior-wave artifacts.
+#
+# Operator view — runbooks/05-running-a-wave.md: GitHub environments,
+# required-reviewers setup, approval checkpoints, gate-failure recovery.
 
-name: _reusable upgrade-wave
+name: _upgrade-wave-reusable
 on:
   workflow_call:
     inputs:

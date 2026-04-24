@@ -1,11 +1,10 @@
 """Stateful device model for the mock iControl REST server.
 
-Designed for Phase 3 multiplexing: StateStore is a multi-device map keyed by
-hostname. Phase 1 registered exactly one device per container via
-MOCK_F5_HOSTNAME; Phase 3 will switch the routing layer to dispatch by Host
-header without changing this module. See docs/decisions/001-mock-topology.md.
+Phase 3 multiplexes: one StateStore holds many DeviceState instances keyed
+by hostname, and the routing layer dispatches by the first URL path segment
+(`/{hostname}/mgmt/tm/...`). See docs/decisions/001-mock-topology.md.
 
-Phase 2 adds:
+Phase 2 added:
 - Time-based transitions (install progress, reboot window) settled lazily
   via `DeviceState.advance()` at the top of every handler. No background
   threads — tests control time by tuning MOCK_INSTALL_SECONDS and
@@ -17,11 +16,13 @@ Phase 2 adds:
 
 from __future__ import annotations
 
+import json
 import os
 import time
 import uuid
 from dataclasses import dataclass, field
 from enum import StrEnum
+from pathlib import Path
 
 # Timings read lazily so tests can set MOCK_*_SECONDS with monkeypatch.setenv
 # and get instant effect without re-importing this module.
@@ -211,12 +212,7 @@ class DeviceState:
 
 
 class StateStore:
-    """Multi-device state store.
-
-    Phase 1 registers exactly one device per container. Phase 3 will register
-    many devices into a single container and route by Host header; this class
-    does not change.
-    """
+    """Multi-device state store keyed by hostname."""
 
     def __init__(self) -> None:
         self._devices: dict[str, DeviceState] = {}
@@ -233,25 +229,51 @@ class StateStore:
     def all(self) -> list[DeviceState]:
         return list(self._devices.values())
 
-    def primary(self) -> DeviceState:
-        """Phase 1 convenience: return the single registered device.
-
-        Phase 3 routing dependency must use Host-header lookup instead.
-        """
-        devices = self.all()
-        if len(devices) != 1:
-            raise RuntimeError(
-                f"StateStore.primary() assumes exactly one device; found {len(devices)}"
-            )
-        return devices[0]
-
 
 def build_store_from_env() -> StateStore:
-    """Phase 1 bootstrap: read hostname/version from env, register one device."""
+    """Single-device bootstrap: read hostname/version from env.
+
+    Used by the in-process unit tests (the `client` fixture boots the app
+    with no manifest set, so this runs) and as a fallback when the
+    container is started without `MOCK_F5_MANIFEST`. Production docker
+    compose uses `build_store_from_manifest` instead.
+    """
     hostname = os.environ.get("MOCK_F5_HOSTNAME", "bigip-lab-01")
     version = os.environ.get("MOCK_F5_VERSION", "16.1.3")
     store = StateStore()
     store.register(DeviceState.fresh(hostname=hostname, version=version))
+    return store
+
+
+def build_store_from_manifest(path: str | Path) -> StateStore:
+    """Multi-device bootstrap: read a JSON manifest listing devices.
+
+    Manifest shape:
+        {
+          "devices": [
+            {"hostname": "bigip-lab-01", "version": "16.1.3"},
+            ...
+          ]
+        }
+
+    `version` is optional and defaults to 16.1.3 to match fresh-device
+    behaviour. Duplicate hostnames raise ValueError so misconfigured
+    manifests fail fast on startup rather than producing a half-populated
+    store.
+    """
+    data = json.loads(Path(path).read_text())
+    devices = data.get("devices", [])
+    if not devices:
+        raise ValueError(f"manifest {path} has no devices")
+    store = StateStore()
+    seen: set[str] = set()
+    for entry in devices:
+        hostname = entry["hostname"]
+        if hostname in seen:
+            raise ValueError(f"manifest {path} has duplicate hostname: {hostname}")
+        seen.add(hostname)
+        version = entry.get("version", "16.1.3")
+        store.register(DeviceState.fresh(hostname=hostname, version=version))
     return store
 
 

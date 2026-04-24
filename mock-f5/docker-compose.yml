@@ -1,60 +1,26 @@
 ---
-# Phase 1 topology: one container per device. See docs/decisions/001-mock-topology.md.
-
-x-mock-template: &mock-template
-  image: nexusf5-mock:dev
-  build:
-    context: .
-  restart: unless-stopped
-  # Fast timings by default so `make test` stays snappy. Override per-service
-  # or via `MOCK_INSTALL_SECONDS=900 docker compose up` for timeout scenarios.
-  environment: &mock-env
-    MOCK_INSTALL_SECONDS: "5"
-    MOCK_REBOOT_SECONDS: "5"
+# Phase 3 topology: one container multiplexing 50 devices, routed by the
+# hostname path prefix. See docs/decisions/001-mock-topology.md.
+#
+# Override the manifest path with MOCK_F5_MANIFEST at compose time to point
+# at a different device list (e.g. a 500-device stress manifest).
 
 services:
-  bigip-lab-01:
-    <<: *mock-template
-    container_name: bigip-lab-01
+  mock-f5:
+    image: nexusf5-mock:dev
+    build:
+      context: .
+    container_name: nexusf5-mock
+    restart: unless-stopped
     environment:
-      <<: *mock-env
-      MOCK_F5_HOSTNAME: bigip-lab-01
-      MOCK_F5_VERSION: 16.1.3
+      # Fast timings by default so `make test` stays snappy. Override with
+      # `MOCK_INSTALL_SECONDS=900 docker compose up` for timeout scenarios.
+      MOCK_INSTALL_SECONDS: "5"
+      MOCK_REBOOT_SECONDS: "5"
+      MOCK_F5_MANIFEST: /app/manifests/lab-50.json
+    volumes:
+      - ./manifests:/app/manifests:ro
     ports:
-      - "8101:8080"
-
-  bigip-lab-02:
-    <<: *mock-template
-    container_name: bigip-lab-02
-    environment:
-      MOCK_F5_HOSTNAME: bigip-lab-02
-      MOCK_F5_VERSION: 16.1.3
-    ports:
-      - "8102:8080"
-
-  bigip-lab-03:
-    <<: *mock-template
-    container_name: bigip-lab-03
-    environment:
-      MOCK_F5_HOSTNAME: bigip-lab-03
-      MOCK_F5_VERSION: 16.1.3
-    ports:
-      - "8103:8080"
-
-  bigip-lab-04:
-    <<: *mock-template
-    container_name: bigip-lab-04
-    environment:
-      MOCK_F5_HOSTNAME: bigip-lab-04
-      MOCK_F5_VERSION: 16.1.3
-    ports:
-      - "8104:8080"
-
-  bigip-lab-05:
-    <<: *mock-template
-    container_name: bigip-lab-05
-    environment:
-      MOCK_F5_HOSTNAME: bigip-lab-05
-      MOCK_F5_VERSION: 16.1.3
-    ports:
-      - "8105:8080"
+      # 8100 (vs Phase 1/2's per-device 8101–8105) makes it unambiguous
+      # which topology is running when both are in local caches.
+      - "8100:8080"

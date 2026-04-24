@@ -56,6 +56,10 @@ on:
         type: string
         default: BIGIP-17.1.0-0.0.3.iso
 
+# Opt JS actions onto Node 24 ahead of GHA's June-2026 default flip.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   wave:
     uses: ./.github/workflows/_upgrade-wave-reusable.yml

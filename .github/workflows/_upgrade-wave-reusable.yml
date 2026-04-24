@@ -69,6 +69,10 @@ concurrency:
   group: upgrade-wave-${{ inputs.wave_name }}
   cancel-in-progress: false
 
+# Opt JS actions onto Node 24 ahead of GHA's June-2026 default flip.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
 
   # Gate: fail closed if the prior wave's artifacts are missing,
@@ -100,6 +104,11 @@ jobs:
           PRIOR_WAVE: ${{ inputs.prior_wave }}
           GATE_THRESHOLD: ${{ inputs.gate_threshold }}
           WORKSPACE: ${{ github.workspace }}
+          # `observability.ingest.gate` is imported by absolute path.
+          # `uv run` from this directory doesn't add the repo root to
+          # sys.path, so the import fails without PYTHONPATH. This is
+          # the same trick pytest uses via pyproject's pythonpath.
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           uv sync
           uv run python -m observability.ingest.gate \
@@ -200,6 +209,7 @@ jobs:
           START_ISO: ${{ steps.start.outputs.iso }}
           UPGRADE_OUTCOME: ${{ steps.upgrade.outcome }}
           WORKSPACE: ${{ github.workspace }}
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           uv sync
           end_iso=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -275,6 +285,7 @@ jobs:
           PUSHGATEWAY_URL: ${{ secrets.PUSHGATEWAY_URL }}
           WAVE_NAME: ${{ inputs.wave_name }}
           WORKSPACE: ${{ github.workspace }}
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           uv sync
           uv run python -m observability.ingest.pusher \

@@ -9,6 +9,12 @@ concurrency:
   group: lint-${{ github.ref }}
   cancel-in-progress: true
 
+# Opt JS actions (checkout, setup-python, setup-uv) onto Node 24 ahead
+# of GHA's June-2026 default flip — silences the deprecation warnings
+# and exercises the newer runtime sooner.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   python:
     runs-on: ubuntu-latest

@@ -27,6 +27,10 @@ concurrency:
   group: rollback-${{ inputs.device }}
   cancel-in-progress: false
 
+# Opt JS actions onto Node 24 ahead of GHA's June-2026 default flip.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   rollback:
     runs-on: ubuntu-latest

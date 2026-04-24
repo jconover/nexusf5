@@ -1,0 +1,39 @@
+---
+# Canary: 5 devices, serial, no prior wave to gate on. Delegates
+# straight to _reusable/upgrade-wave.yml. When CI is green here, the
+# wave-1 promoter (upgrade-wave.yml) uses this run's ID as
+# `prior_wave_run_id` and the gate reads the artifacts that produced
+# the green.
+#
+# Manual trigger only — never auto-kicked. See
+# runbooks/05-running-a-wave.md for the operator checklist.
+
+name: upgrade-canary
+on:
+  workflow_dispatch:
+    inputs:
+      target_version:
+        description: BIG-IP target version, e.g. 17.1.0.
+        required: true
+        type: string
+        default: "17.1.0"
+      target_image_name:
+        description: ISO name the install role registers.
+        required: true
+        type: string
+        default: BIGIP-17.1.0-0.0.3.iso
+
+jobs:
+  canary:
+    uses: ./.github/workflows/_reusable/upgrade-wave.yml
+    with:
+      wave_name: canary
+      # Canary is deliberately serial — `f5_preflight_cpu_max_pct` and
+      # its siblings are conservative per CLAUDE.md; a smoke on five
+      # devices is worth a little wall time.
+      parallelism: 1
+      target_version: ${{ inputs.target_version }}
+      target_image_name: ${{ inputs.target_image_name }}
+      environment: canary
+    secrets:
+      PUSHGATEWAY_URL: ${{ secrets.PUSHGATEWAY_URL }}

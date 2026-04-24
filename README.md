@@ -29,13 +29,18 @@ cd nexusf5
 # Install Python + Ansible collection dependencies
 make install-deps
 
-# Stand up the 5-device mock fleet and run the Phase 1 test suite
+# Stand up the 50-device multiplexed mock fleet and run the test suite
 make test
 ```
 
 You should see pytest green, then the preflight playbook running against all
-five mock devices with every health assertion passing. The mock stays running
+50 mock devices with every health assertion passing. The mock stays running
 after `make test`; stop it with `make mock-down`.
+
+One shared container at `http://localhost:8100` hosts every device; the
+hostname is the first URL path segment (`/bigip-lab-01/mgmt/tm/sys/version`).
+See [`docs/decisions/001-mock-topology.md`](docs/decisions/001-mock-topology.md)
+for the routing rationale.
 
 ### Optional: local pre-commit hooks
 
@@ -62,10 +67,15 @@ pre-commit install
 
 ## Development status
 
-**Phase 2 of 5 complete.** Per-device upgrade + rollback works end-to-end
-against the mock fleet (happy path plus `fail-next-install`, `slow-reboot`,
-and `post-boot-unhealthy` chaos scenarios). See [`TODO.md`](TODO.md) for
-the full phase plan.
+**Phase 3 in progress** (PR 1 of 2 merged). Phases 1 and 2 complete:
+per-device upgrade + rollback works end-to-end against the mock fleet
+(happy path plus `fail-next-install`, `slow-reboot`, and
+`post-boot-unhealthy` chaos scenarios). Phase 3 PR 1 scales the mock
+to 50 devices behind one multiplexed container and splits the inventory
+across `canary` / `wave_1` / `wave_2` / `wave_3` groups, enforced by a
+pytest that fails on wave overlap. Phase 3 PR 2 adds the GitHub Actions
+wave workflows, artifact publishing, and Pushgateway ingestion.
+See [`TODO.md`](TODO.md) for the full phase plan.
 
 Run `make test-unit` for the fast dev loop (in-process, ~0.4s). Run
 `make test` for the full suite including integration tests that drive

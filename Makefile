@@ -19,9 +19,9 @@ lint: ## Run all linters (ruff, mypy, yamllint, ansible-lint)
 mock-build: ## Build the mock F5 docker image
 	$(MOCK_COMPOSE) build
 
-mock-up: ## Start the 5-device mock F5 compose stack
+mock-up: ## Start the 50-device multiplexed mock F5 stack
 	$(MOCK_COMPOSE) up -d --wait
-	@echo "==> Mock F5 devices up: bigip-lab-01..05 on localhost:8101..8105"
+	@echo "==> Mock F5 up: 50 devices behind http://localhost:8100/<hostname>"
 
 mock-down: ## Stop and remove the mock F5 stack
 	$(MOCK_COMPOSE) down -v

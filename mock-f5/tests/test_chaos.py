@@ -15,13 +15,13 @@ def test_fail_next_install_op_status_fails_not_endpoint(
     client.post("/_chaos/bigip-lab-01/fail-next-install")
 
     r = client.post(
-        "/mgmt/tm/sys/software/volume",
+        "/bigip-lab-01/mgmt/tm/sys/software/volume",
         json={"command": "install", "name": "HD1.2", "version": "17.1.0"},
     )
     assert r.status_code == 200
     assert r.json()["status"] == "in progress"
 
-    r = client.get("/mgmt/tm/sys/software/volume/HD1.2")
+    r = client.get("/bigip-lab-01/mgmt/tm/sys/software/volume/HD1.2")
     assert r.status_code == 200
     body = r.json()
     assert body["status"] == "failed"
@@ -33,15 +33,15 @@ def test_fail_next_install_is_one_shot(client: TestClient, monkeypatch: pytest.M
     monkeypatch.setenv("MOCK_INSTALL_SECONDS", "0")
     client.post("/_chaos/bigip-lab-01/fail-next-install")
     client.post(
-        "/mgmt/tm/sys/software/volume",
+        "/bigip-lab-01/mgmt/tm/sys/software/volume",
         json={"command": "install", "name": "HD1.2", "version": "17.1.0"},
     )
     # Second install succeeds — chaos consumed itself.
     client.post(
-        "/mgmt/tm/sys/software/volume",
+        "/bigip-lab-01/mgmt/tm/sys/software/volume",
         json={"command": "install", "name": "HD1.2", "version": "17.1.0"},
     )
-    r = client.get("/mgmt/tm/sys/software/volume/HD1.2")
+    r = client.get("/bigip-lab-01/mgmt/tm/sys/software/volume/HD1.2")
     body = r.json()
     assert body["status"] == "complete"
     assert body["version"] == "17.1.0"
@@ -56,11 +56,11 @@ def test_slow_reboot_exceeds_normal_timing_window(
     monkeypatch.setenv("MOCK_SLOW_REBOOT_MULTIPLIER", "20")
     client.post("/_chaos/bigip-lab-01/slow-reboot")
     client.post(
-        "/mgmt/tm/util/bash",
+        "/bigip-lab-01/mgmt/tm/util/bash",
         json={"command": "run", "utilCmdArgs": "-c 'tmsh reboot'"},
     )
     time.sleep(0.2)
-    r = client.get("/mgmt/tm/sys/version")
+    r = client.get("/bigip-lab-01/mgmt/tm/sys/version")
     assert r.status_code == 503  # still rebooting
 
 
@@ -70,13 +70,13 @@ def test_post_boot_unhealthy_flips_ha_red_after_reboot(
     monkeypatch.setenv("MOCK_REBOOT_SECONDS", "0")
     client.post("/_chaos/bigip-lab-01/post-boot-unhealthy")
     client.post(
-        "/mgmt/tm/util/bash",
+        "/bigip-lab-01/mgmt/tm/util/bash",
         json={"command": "run", "utilCmdArgs": "-c 'tmsh reboot'"},
     )
 
     # After the reboot completes, HA should be red (FORCED OFFLINE) — health
     # gate in the runbook must catch this and trigger rollback.
-    r = client.get("/mgmt/tm/cm/failover-status")
+    r = client.get("/bigip-lab-01/mgmt/tm/cm/failover-status")
     fields = next(iter(r.json()["entries"].values()))["nestedStats"]["entries"]
     assert fields["color"]["description"] == "red"
     assert fields["status"]["description"] == "FORCED OFFLINE"
@@ -88,7 +88,7 @@ def test_post_boot_unhealthy_is_one_shot(
     monkeypatch.setenv("MOCK_REBOOT_SECONDS", "0")
     client.post("/_chaos/bigip-lab-01/post-boot-unhealthy")
     client.post(
-        "/mgmt/tm/util/bash",
+        "/bigip-lab-01/mgmt/tm/util/bash",
         json={"command": "run", "utilCmdArgs": "-c 'tmsh reboot'"},
     )
     # Reset to simulate operator rolling back.
@@ -98,7 +98,7 @@ def test_post_boot_unhealthy_is_one_shot(
     # subsequent healthy reboot does not re-trigger the red state.
     client.post("/_chaos/bigip-lab-01/reset")
     client.post(
-        "/mgmt/tm/util/bash",
+        "/bigip-lab-01/mgmt/tm/util/bash",
         json={"command": "run", "utilCmdArgs": "-c 'tmsh reboot'"},
     )
     # chaos has been reset and consumed; second reboot does not re-apply
@@ -112,10 +112,10 @@ def test_chaos_reset_clears_all_flags(client: TestClient, monkeypatch: pytest.Mo
     assert r.status_code == 200
     # Install after reset succeeds.
     client.post(
-        "/mgmt/tm/sys/software/volume",
+        "/bigip-lab-01/mgmt/tm/sys/software/volume",
         json={"command": "install", "name": "HD1.2", "version": "17.1.0"},
     )
-    r = client.get("/mgmt/tm/sys/software/volume/HD1.2")
+    r = client.get("/bigip-lab-01/mgmt/tm/sys/software/volume/HD1.2")
     assert r.json()["status"] == "complete"
 
 
@@ -143,16 +143,16 @@ def test_reset_device_restores_fresh_state(
     monkeypatch.setenv("MOCK_INSTALL_SECONDS", "0")
     monkeypatch.setenv("MOCK_REBOOT_SECONDS", "0")
     client.post(
-        "/mgmt/tm/sys/software/volume",
+        "/bigip-lab-01/mgmt/tm/sys/software/volume",
         json={"command": "install", "name": "HD1.2", "version": "17.1.0"},
     )
-    client.patch("/mgmt/tm/sys/software/volume/HD1.2", json={"active": True})
+    client.patch("/bigip-lab-01/mgmt/tm/sys/software/volume/HD1.2", json={"active": True})
     client.post(
-        "/mgmt/tm/util/bash",
+        "/bigip-lab-01/mgmt/tm/util/bash",
         json={"command": "run", "utilCmdArgs": "-c 'tmsh reboot'"},
     )
     # Version is now 17.1.0.
-    r = client.get("/mgmt/tm/sys/version")
+    r = client.get("/bigip-lab-01/mgmt/tm/sys/version")
     fields = next(iter(r.json()["entries"].values()))["nestedStats"]["entries"]
     assert fields["Version"]["description"] == "17.1.0"
 
@@ -161,10 +161,10 @@ def test_reset_device_restores_fresh_state(
     assert r.status_code == 200
 
     # Back to 16.1.3 with HD1.1 active.
-    r = client.get("/mgmt/tm/sys/version")
+    r = client.get("/bigip-lab-01/mgmt/tm/sys/version")
     fields = next(iter(r.json()["entries"].values()))["nestedStats"]["entries"]
     assert fields["Version"]["description"] == "16.1.3"
-    assert client.get("/mgmt/tm/sys/software/volume/HD1.1").json()["active"] is True
+    assert client.get("/bigip-lab-01/mgmt/tm/sys/software/volume/HD1.1").json()["active"] is True
 
 
 def test_reset_device_clears_rebooting_window(
@@ -173,12 +173,12 @@ def test_reset_device_clears_rebooting_window(
     # Kick off a long reboot, then reset — subsequent requests must not 503.
     monkeypatch.setenv("MOCK_REBOOT_SECONDS", "600")
     client.post(
-        "/mgmt/tm/util/bash",
+        "/bigip-lab-01/mgmt/tm/util/bash",
         json={"command": "run", "utilCmdArgs": "-c 'tmsh reboot'"},
     )
-    assert client.get("/mgmt/tm/sys/version").status_code == 503
+    assert client.get("/bigip-lab-01/mgmt/tm/sys/version").status_code == 503
     client.post("/_chaos/bigip-lab-01/reset-device")
-    assert client.get("/mgmt/tm/sys/version").status_code == 200
+    assert client.get("/bigip-lab-01/mgmt/tm/sys/version").status_code == 200
 
 
 def test_reset_device_unknown_host_404(client: TestClient) -> None:

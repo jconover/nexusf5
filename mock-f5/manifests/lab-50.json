@@ -1,0 +1,204 @@
+{
+  "devices": [
+    {
+      "hostname": "bigip-lab-01",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-02",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-03",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-04",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-05",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-06",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-07",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-08",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-09",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-10",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-11",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-12",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-13",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-14",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-15",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-16",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-17",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-18",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-19",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-20",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-21",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-22",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-23",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-24",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-25",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-26",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-27",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-28",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-29",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-30",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-31",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-32",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-33",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-34",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-35",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-36",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-37",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-38",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-39",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-40",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-41",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-42",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-43",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-44",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-45",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-46",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-47",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-48",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-49",
+      "version": "16.1.3"
+    },
+    {
+      "hostname": "bigip-lab-50",
+      "version": "16.1.3"
+    }
+  ]
+}

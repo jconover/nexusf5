@@ -14,35 +14,32 @@ import httpx
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ANSIBLE_DIR = REPO_ROOT / "ansible"
 
-DEVICE_PORTS = {
-    "bigip-lab-01": 8101,
-    "bigip-lab-02": 8102,
-    "bigip-lab-03": 8103,
-    "bigip-lab-04": 8104,
-    "bigip-lab-05": 8105,
-}
+# Phase 3 multiplexing: every device shares the same host/port; the hostname
+# is the first path segment. See docs/decisions/001-mock-topology.md.
+MOCK_HOST = "http://localhost:8100"
 
 
 def mock_base(hostname: str) -> str:
-    return f"http://localhost:{DEVICE_PORTS[hostname]}"
+    return f"{MOCK_HOST}/{hostname}"
 
 
 def mock_reachable() -> bool:
     try:
-        r = httpx.get("http://localhost:8101/health", timeout=2.0)
+        r = httpx.get(f"{MOCK_HOST}/health", timeout=2.0)
     except (httpx.HTTPError, OSError):
         return False
     return r.status_code == 200
 
 
 def reset_device(hostname: str) -> None:
-    url = f"{mock_base(hostname)}/_chaos/{hostname}/reset-device"
+    # Chaos endpoints live at the root; hostname is still a path param.
+    url = f"{MOCK_HOST}/_chaos/{hostname}/reset-device"
     r = httpx.post(url, timeout=5.0)
     r.raise_for_status()
 
 
 def inject_chaos(hostname: str, scenario: str) -> None:
-    url = f"{mock_base(hostname)}/_chaos/{hostname}/{scenario}"
+    url = f"{MOCK_HOST}/_chaos/{hostname}/{scenario}"
     r = httpx.post(url, timeout=5.0)
     r.raise_for_status()
 

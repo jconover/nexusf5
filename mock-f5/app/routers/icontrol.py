@@ -27,7 +27,10 @@ from app.state import (
     now,
 )
 
-router = APIRouter(prefix="/mgmt/tm")
+# Phase 3 multiplexing: hostname is the first path segment. `get_device`
+# reads it from request.path_params and resolves the per-device state.
+# See docs/decisions/001-mock-topology.md.
+router = APIRouter(prefix="/{hostname}/mgmt/tm")
 
 
 def _reboot_guard(device: DeviceState) -> Response | None:

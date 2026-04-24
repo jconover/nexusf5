@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 
 
 def test_sys_version_shape(client: TestClient) -> None:
-    r = client.get("/mgmt/tm/sys/version")
+    r = client.get("/bigip-lab-01/mgmt/tm/sys/version")
     assert r.status_code == 200
     body = r.json()
     assert body["kind"] == "tm:sys:version:versionstats"

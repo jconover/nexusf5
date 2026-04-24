@@ -153,6 +153,7 @@ nexusf5/
 - If a design choice could go either way (e.g. "should this be a role or a playbook?"), write a short ADR in `docs/decisions/NNN-title.md` using the [MADR](https://adr.github.io/madr/) format and pick one.
 - If scope is creeping mid-phase, stop and flag it. Don't silently expand phase work.
 - If a test is flaky, fix the test or fix the code — never mark it as skip.
+- If a concrete literal from the plan feels over-specified, don't "tidy" it — the plan's verbosity is usually load-bearing. When you notice you're making something cleaner than the plan asked (e.g. sharding wave_1's 45 devices into 15/15/15 "for symmetry" instead of the 45 the plan specified), stop and ask instead of deciding.
 
 ## Where not to go
 

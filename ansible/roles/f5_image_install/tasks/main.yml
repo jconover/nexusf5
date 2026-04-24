@@ -23,13 +23,13 @@
     validate_certs: "{{ f5_validate_certs }}"
     return_content: true
     timeout: "{{ f5_api_timeout }}"
-  register: f5_install_volumes
+  register: f5_image_install_volumes
   tags: [install]
 
 - name: Install | pick inactive volume as install target
   ansible.builtin.set_fact:
-    f5_install_target_volume: >-
-      {{ (f5_install_volumes.json['items'] | rejectattr('active', 'equalto', true) | list | first).name }}
+    f5_image_install_target_volume: >-
+      {{ (f5_image_install_volumes.json['items'] | rejectattr('active', 'equalto', true) | list | first).name }}
   tags: [install]
 
 - name: Install | register target image
@@ -62,17 +62,17 @@
     body_format: json
     body:
       command: install
-      name: "{{ f5_install_target_volume }}"
+      name: "{{ f5_image_install_target_volume }}"
       version: "{{ f5_target_version }}"
     timeout: "{{ f5_api_timeout }}"
-  register: f5_install_start
+  register: f5_image_install_start
   tags: [install]
 
 - name: Install | poll until complete or failed
   # raw-icontrol-rest
   # GET /mgmt/tm/sys/software/volume/{volume}
   ansible.builtin.uri:
-    url: "{{ f5_api_base_url }}/mgmt/tm/sys/software/volume/{{ f5_install_target_volume }}"
+    url: "{{ f5_api_base_url }}/mgmt/tm/sys/software/volume/{{ f5_image_install_target_volume }}"
     method: GET
     user: "{{ f5_api_user }}"
     password: "{{ f5_api_password }}"
@@ -80,8 +80,8 @@
     validate_certs: "{{ f5_validate_certs }}"
     return_content: true
     timeout: "{{ f5_api_timeout }}"
-  register: f5_install_poll
-  until: f5_install_poll.json.status in ['complete', 'failed']
+  register: f5_image_install_poll
+  until: f5_image_install_poll.json.status in ['complete', 'failed']
   retries: "{{ f5_image_install_poll_retries }}"
   delay: "{{ f5_image_install_poll_delay }}"
   tags: [install]
@@ -89,12 +89,12 @@
 - name: Install | assert install did not fail
   ansible.builtin.assert:
     that:
-      - f5_install_poll.json.status == 'complete'
+      - f5_image_install_poll.json.status == 'complete'
     fail_msg: >-
-      Install to {{ f5_install_target_volume }} on {{ inventory_hostname }}
-      ended with status={{ f5_install_poll.json.status }}.
+      Install to {{ f5_image_install_target_volume }} on {{ inventory_hostname }}
+      ended with status={{ f5_image_install_poll.json.status }}.
       See runbooks/02-image-install-stuck.md
     success_msg: >-
-      Install to {{ f5_install_target_volume }} complete at version
-      {{ f5_install_poll.json.version }}
+      Install to {{ f5_image_install_target_volume }} complete at version
+      {{ f5_image_install_poll.json.version }}
   tags: [install]

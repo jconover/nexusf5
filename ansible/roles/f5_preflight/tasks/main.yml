@@ -76,43 +76,43 @@
     _mem_key: "https://localhost/mgmt/tm/sys/performance/all-stats/Memory%20Used"
     _conn_key: "https://localhost/mgmt/tm/sys/performance/all-stats/Active%20Connections"
   ansible.builtin.set_fact:
-    f5_fact_version: "{{ _version_entry.Version.description }}"
-    f5_fact_ha_status: "{{ _failover_entry.status.description }}"
-    f5_fact_ha_color: "{{ _failover_entry.color.description }}"
-    f5_fact_sync_status: "{{ _sync_entry.status.description }}"
-    f5_fact_sync_color: "{{ _sync_entry.color.description }}"
-    f5_fact_cpu_pct: "{{ _perf_entries[_cpu_key].nestedStats.entries.Current.description | float }}"
-    f5_fact_mem_pct: "{{ _perf_entries[_mem_key].nestedStats.entries.Current.description | float }}"
-    f5_fact_connections: "{{ _perf_entries[_conn_key].nestedStats.entries.Current.description | int }}"
+    f5_preflight_fact_version: "{{ _version_entry.Version.description }}"
+    f5_preflight_fact_ha_status: "{{ _failover_entry.status.description }}"
+    f5_preflight_fact_ha_color: "{{ _failover_entry.color.description }}"
+    f5_preflight_fact_sync_status: "{{ _sync_entry.status.description }}"
+    f5_preflight_fact_sync_color: "{{ _sync_entry.color.description }}"
+    f5_preflight_fact_cpu_pct: "{{ _perf_entries[_cpu_key].nestedStats.entries.Current.description | float }}"
+    f5_preflight_fact_mem_pct: "{{ _perf_entries[_mem_key].nestedStats.entries.Current.description | float }}"
+    f5_preflight_fact_connections: "{{ _perf_entries[_conn_key].nestedStats.entries.Current.description | int }}"
   tags: [preflight]
 
 - name: Preflight | summarise
   ansible.builtin.debug:
     msg:
       - "host={{ inventory_hostname }}"
-      - "version={{ f5_fact_version }}"
-      - "ha={{ f5_fact_ha_status }} ({{ f5_fact_ha_color }})"
-      - "sync={{ f5_fact_sync_status }} ({{ f5_fact_sync_color }})"
-      - "cpu={{ f5_fact_cpu_pct }}% mem={{ f5_fact_mem_pct }}% conns={{ f5_fact_connections }}"
+      - "version={{ f5_preflight_fact_version }}"
+      - "ha={{ f5_preflight_fact_ha_status }} ({{ f5_preflight_fact_ha_color }})"
+      - "sync={{ f5_preflight_fact_sync_status }} ({{ f5_preflight_fact_sync_color }})"
+      - "cpu={{ f5_preflight_fact_cpu_pct }}% mem={{ f5_preflight_fact_mem_pct }}% conns={{ f5_preflight_fact_connections }}"
   tags: [preflight]
 
 - name: Preflight | assert HA color not red
   ansible.builtin.assert:
     that:
-      - f5_fact_ha_color != 'red'
+      - f5_preflight_fact_ha_color != 'red'
     fail_msg: >-
       HA color red on {{ inventory_hostname }} — aborting.
       See runbooks/01-preflight-failure.md
-    success_msg: "HA color ok ({{ f5_fact_ha_color }})"
+    success_msg: "HA color ok ({{ f5_preflight_fact_ha_color }})"
   when: f5_preflight_fail_on_red | bool
   tags: [preflight]
 
 - name: Preflight | assert sync status In Sync
   ansible.builtin.assert:
     that:
-      - f5_fact_sync_status == 'In Sync'
+      - f5_preflight_fact_sync_status == 'In Sync'
     fail_msg: >-
-      Sync status {{ f5_fact_sync_status }} on {{ inventory_hostname }} — aborting.
+      Sync status {{ f5_preflight_fact_sync_status }} on {{ inventory_hostname }} — aborting.
       See runbooks/01-preflight-failure.md
     success_msg: "Sync status ok (In Sync)"
   when: f5_preflight_fail_on_red | bool
@@ -121,30 +121,30 @@
 - name: Preflight | assert CPU under threshold
   ansible.builtin.assert:
     that:
-      - f5_fact_cpu_pct | float < f5_preflight_cpu_max_pct | float
+      - f5_preflight_fact_cpu_pct | float < f5_preflight_cpu_max_pct | float
     fail_msg: >-
-      CPU {{ f5_fact_cpu_pct }}% exceeds {{ f5_preflight_cpu_max_pct }}% on
+      CPU {{ f5_preflight_fact_cpu_pct }}% exceeds {{ f5_preflight_cpu_max_pct }}% on
       {{ inventory_hostname }}. See runbooks/01-preflight-failure.md
-    success_msg: "CPU ok ({{ f5_fact_cpu_pct }}%)"
+    success_msg: "CPU ok ({{ f5_preflight_fact_cpu_pct }}%)"
   tags: [preflight]
 
 - name: Preflight | assert memory under threshold
   ansible.builtin.assert:
     that:
-      - f5_fact_mem_pct | float < f5_preflight_mem_max_pct | float
+      - f5_preflight_fact_mem_pct | float < f5_preflight_mem_max_pct | float
     fail_msg: >-
-      Memory {{ f5_fact_mem_pct }}% exceeds {{ f5_preflight_mem_max_pct }}% on
+      Memory {{ f5_preflight_fact_mem_pct }}% exceeds {{ f5_preflight_mem_max_pct }}% on
       {{ inventory_hostname }}. See runbooks/01-preflight-failure.md
-    success_msg: "Memory ok ({{ f5_fact_mem_pct }}%)"
+    success_msg: "Memory ok ({{ f5_preflight_fact_mem_pct }}%)"
   tags: [preflight]
 
 - name: Preflight | assert connection count under ceiling
   ansible.builtin.assert:
     that:
-      - f5_fact_connections | int < f5_preflight_connections_max | int
+      - f5_preflight_fact_connections | int < f5_preflight_connections_max | int
     fail_msg: >-
-      Connections {{ f5_fact_connections }} exceeds
+      Connections {{ f5_preflight_fact_connections }} exceeds
       {{ f5_preflight_connections_max }} on {{ inventory_hostname }}.
       See runbooks/01-preflight-failure.md
-    success_msg: "Connections ok ({{ f5_fact_connections }})"
+    success_msg: "Connections ok ({{ f5_preflight_fact_connections }})"
   tags: [preflight]

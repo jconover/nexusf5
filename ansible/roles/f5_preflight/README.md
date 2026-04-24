@@ -11,10 +11,10 @@ per CLAUDE.md non-negotiables.
 - CPU, memory, active connections (`GET /mgmt/tm/sys/performance/all-stats`)
 
 ## Facts set
-- `f5_fact_version`
-- `f5_fact_ha_status`, `f5_fact_ha_color`
-- `f5_fact_sync_status`, `f5_fact_sync_color`
-- `f5_fact_cpu_pct`, `f5_fact_mem_pct`, `f5_fact_connections`
+- `f5_preflight_fact_version`
+- `f5_preflight_fact_ha_status`, `f5_preflight_fact_ha_color`
+- `f5_preflight_fact_sync_status`, `f5_preflight_fact_sync_color`
+- `f5_preflight_fact_cpu_pct`, `f5_preflight_fact_mem_pct`, `f5_preflight_fact_connections`
 
 ## Required host/group vars
 - `f5_api_base_url` — e.g. `http://localhost:8100/{{ inventory_hostname }}` (Phase 3 multiplexed mock) or `https://bigip-dc1-042.example.net` (real F5)

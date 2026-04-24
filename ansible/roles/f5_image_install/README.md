@@ -22,7 +22,7 @@ Installs the target TMOS image to the BIG-IP's currently-inactive volume.
 - `f5_image_install_poll_delay` seconds (default 10)
 
 ## Facts set
-- `f5_install_target_volume` — the volume name installed to (picked as the
+- `f5_image_install_target_volume` — the volume name installed to (picked as the
   currently-inactive one).
 
 ## Tags

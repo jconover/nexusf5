@@ -1,5 +1,12 @@
 ---
 # Global vars for every device in every wave.
+
+# Phase 3: every device shares one multiplexed mock endpoint, disambiguated
+# by the hostname as the first path segment. Real F5 environments override
+# this per-host (or per-env group) to a DNS/VIP that points at the device's
+# own management interface. See docs/decisions/001-mock-topology.md.
+f5_api_base_url: "http://localhost:8100/{{ inventory_hostname }}"
+
 f5_api_user: admin
 # Mock accepts any credentials. Real environments override via Ansible Vault
 # or a workflow-provided secret — never commit real values here.

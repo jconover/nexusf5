@@ -19,12 +19,21 @@ lint: ## Run all linters against host tooling — fast, for iteration
 	cd mock-f5 && uv run ruff check app tests
 	cd mock-f5 && uv run ruff format --check app tests
 	cd mock-f5 && uv run mypy app
+	cd observability/ingest && uv run ruff check .
+	cd observability/ingest && uv run ruff format --check .
+	cd observability/ingest && uv run mypy
 	yamllint .
 	cd ansible && ANSIBLE_ROLES_PATH=$(PWD)/ansible/roles ansible-lint playbooks/ roles/
 
 lint-ci: ## Run lint exactly as CI does (containerized) — authoritative pre-push check
 	@echo "==> CI-parity lint in python:3.12-slim with uv=$(UV_VERSION)"
+	# --user maps host UID:GID so the container doesn't root-own the
+	# generated .venv directories. HOME/USER keep uv/pip happy with
+	# a nonzero UID. Discovered after `make lint-ci` on an earlier
+	# pass left root-owned .venv dirs that blocked `make lint`.
 	docker run --rm \
+	  --user $(shell id -u):$(shell id -g) \
+	  -e HOME=/tmp -e USER=ci \
 	  -v "$(PWD):/repo" -w /repo \
 	  -e UV_VERSION=$(UV_VERSION) \
 	  python:3.12-slim \
@@ -45,6 +54,7 @@ mock-logs: ## Tail mock-f5 logs
 
 test-unit: ## Fast in-process pytest run (no Docker, no ansible)
 	cd mock-f5 && uv run pytest -q --ignore=tests/integration
+	cd observability/ingest && uv run pytest -q
 
 test: mock-up ## Full suite: unit + integration (drives ansible-playbook) + preflight
 	cd mock-f5 && uv run pytest -q

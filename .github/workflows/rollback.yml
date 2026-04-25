@@ -1,0 +1,61 @@
+---
+# Device-scoped rollback. Runs `ansible-playbook rollback.yml --limit
+# <device>` against a single host. No wave matrix, no gate, no
+# artifact ingestion — rollback is the manual-pull-the-handle path, so
+# a human is already in the loop and concurrency-guarding against
+# "two operators pressing the button" is the only discipline worth
+# codifying in the workflow itself.
+#
+# The rollback playbook itself is CLAUDE.md non-negotiable: safely
+# re-runnable, BIG-IP's two-volume boot model is the actual safety net,
+# this workflow just fires it against the right device.
+#
+# Manual trigger only. See runbooks/04-rollback.md for operator flow.
+
+name: rollback
+on:
+  workflow_dispatch:
+    inputs:
+      device:
+        description: Inventory hostname (e.g. bigip-lab-07).
+        required: true
+        type: string
+
+# Serialize rollbacks per-device: two operators hitting rollback on
+# the same device at the same time is never what's wanted.
+concurrency:
+  group: rollback-${{ inputs.device }}
+  cancel-in-progress: false
+
+# Opt JS actions onto Node 24 ahead of GHA's June-2026 default flip.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version-file: .tool-versions
+
+      - name: Install Ansible + collections
+        run: |
+          pip install 'ansible-core>=2.17'
+          ansible-galaxy collection install -r ansible/collections/requirements.yml
+
+      - name: Bring up multiplexed mock
+        run: make mock-up
+
+      - name: Rollback
+        working-directory: ansible
+        env:
+          DEVICE: ${{ inputs.device }}
+        run: ansible-playbook -i inventory/hosts.yml playbooks/rollback.yml --limit "$DEVICE"
+
+      - name: Tear down mock
+        if: always()
+        run: make mock-down

@@ -12,15 +12,13 @@ set -euo pipefail
 
 UV_VERSION="${UV_VERSION:?UV_VERSION must be set — read from .tool-versions via the Makefile}"
 
-echo "::group::install system deps"
-apt-get update -qq
-apt-get install -y --no-install-recommends curl ca-certificates >/dev/null
-rm -rf /var/lib/apt/lists/*
-echo "::endgroup::"
-
 echo "::group::install uv ${UV_VERSION}"
-curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh
-export PATH="/root/.local/bin:${PATH}"
+# pip install (vs the curl | sh installer) avoids the apt-get / curl
+# dance entirely, and works when docker run passes --user <host uid>
+# so the generated .venv dirs aren't root-owned on the host. The
+# CI runner itself uses setup-uv which is a separate code path.
+pip install --quiet --user --no-warn-script-location "uv==${UV_VERSION}"
+export PATH="${HOME}/.local/bin:${PATH}"
 uv --version
 echo "::endgroup::"
 
@@ -32,6 +30,16 @@ uv run ruff format --check app tests
 uv run mypy app
 uv run pytest -q   # integration tests auto-skip when mock stack isn't up
 cd ..
+echo "::endgroup::"
+
+echo "::group::observability/ingest: uv sync + ruff + mypy + pytest"
+cd observability/ingest
+uv sync
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy
+uv run pytest -q
+cd ../..
 echo "::endgroup::"
 
 echo "::group::yamllint (whole repo)"

@@ -1,0 +1,59 @@
+[project]
+name = "nexusf5-ingest"
+version = "0.1.0"
+description = "Artifact schema, success-rate gate, and Pushgateway client for NexusF5 wave upgrades"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.9.0",
+    "prometheus-client>=0.20.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "ruff>=0.6.9",
+    "mypy>=1.11.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "PT", "SIM", "RUF"]
+ignore = ["N818"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+# mypy runs from the ingest/ dir; naming the package explicitly (rather
+# than `files = ["."]`) avoids the "found twice under different module
+# names" trap that mypy_path tricks otherwise create. Tests resolve the
+# same package via pytest's pythonpath above.
+packages = ["observability.ingest"]
+mypy_path = "../.."
+namespace_packages = true
+explicit_package_bases = true
+
+[[tool.mypy.overrides]]
+module = ["prometheus_client.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Repo root on sys.path so `from observability.ingest.schema import ...`
+# resolves when pytest runs from this directory. Keeps the tests and
+# the `python -m observability.ingest.gate` entrypoint on the same
+# import shape so they can't drift.
+pythonpath = ["../.."]
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning",
+]

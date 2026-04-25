@@ -1,0 +1,300 @@
+---
+# Reusable workflow — NOT for direct dispatch.
+#
+# The `_` filename prefix is the soft signal; the `on: workflow_call:`
+# block (no workflow_dispatch, no push, nothing else) is the hard
+# enforcement. GitHub Actions requires reusable workflows to live at
+# the top level of .github/workflows/ — no subdirectories — which
+# drove this flat layout. Callers: upgrade-canary.yml, upgrade-wave.yml.
+#
+# Runs one wave's device-upgrade matrix, gated on the prior wave's
+# artifacts. Inside the wave, a `parallelism`-bounded matrix runs;
+# between waves, the `gate` job fails closed on missing / empty /
+# malformed / below-threshold prior-wave artifacts.
+#
+# Operator view — runbooks/05-running-a-wave.md: GitHub environments,
+# required-reviewers setup, approval checkpoints, gate-failure recovery.
+
+name: _upgrade-wave-reusable
+on:
+  workflow_call:
+    inputs:
+      wave_name:
+        description: Inventory group to upgrade (canary / wave_1 / wave_2 / wave_3).
+        required: true
+        type: string
+      parallelism:
+        description: Max concurrent matrix jobs within the wave.
+        required: true
+        type: number
+      target_version:
+        description: BIG-IP target version, e.g. 17.1.0.
+        required: true
+        type: string
+      target_image_name:
+        description: ISO name the install role registers.
+        required: true
+        type: string
+      prior_wave:
+        description: Wave whose artifacts gate this run. Empty for canary.
+        required: false
+        type: string
+        default: ""
+      prior_wave_run_id:
+        description: Run ID whose artifacts the gate should read.
+        required: false
+        type: string
+        default: ""
+      gate_threshold:
+        description: Minimum prior-wave success rate (0.0-1.0). Default 1.0.
+        required: false
+        type: number
+        default: 1.0
+      environment:
+        description: GitHub environment for approval gating.
+        required: false
+        type: string
+        default: ""
+    secrets:
+      PUSHGATEWAY_URL:
+        description: Pushgateway base URL. If unset, push step is skipped.
+        required: false
+
+# Per-wave concurrency. Two kicks of the same wave serialize (the
+# second waits in queue); two different waves (e.g. wave_1 and wave_3)
+# can run in parallel because they have different groups. Intentional:
+# accidental double-starts get caught, but the fleet's parallelism
+# between waves is preserved.
+concurrency:
+  group: upgrade-wave-${{ inputs.wave_name }}
+  cancel-in-progress: false
+
+# Opt JS actions onto Node 24 ahead of GHA's June-2026 default flip.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+
+  # Gate: fail closed if the prior wave's artifacts are missing,
+  # malformed, or below the success-rate threshold. Canary skips
+  # this job (`prior_wave` empty) since there is no prior wave.
+  gate:
+    if: inputs.prior_wave != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version-file: .tool-versions
+
+      - name: Download prior-wave artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: upgrade-${{ inputs.prior_wave }}-*
+          path: prior-artifacts
+          merge-multiple: true
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.prior_wave_run_id }}
+
+      - name: Evaluate success-rate gate
+        working-directory: observability/ingest
+        env:
+          PRIOR_WAVE: ${{ inputs.prior_wave }}
+          GATE_THRESHOLD: ${{ inputs.gate_threshold }}
+          WORKSPACE: ${{ github.workspace }}
+          # `observability.ingest.gate` is imported by absolute path.
+          # `uv run` from this directory doesn't add the repo root to
+          # sys.path, so the import fails without PYTHONPATH. This is
+          # the same trick pytest uses via pyproject's pythonpath.
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          uv sync
+          uv run python -m observability.ingest.gate \
+            --prior-wave "$PRIOR_WAVE" \
+            --artifacts-dir "$WORKSPACE/prior-artifacts" \
+            --threshold "$GATE_THRESHOLD"
+
+  # Discover: read the inventory and emit the device matrix. Fails
+  # loudly if the wave group is empty — an empty matrix would
+  # silently produce a no-op wave.
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      devices: ${{ steps.list.outputs.devices }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyYAML
+        run: pip install pyyaml
+
+      - name: List wave devices
+        id: list
+        env:
+          WAVE_NAME: ${{ inputs.wave_name }}
+        run: |
+          devices=$(python tools/list_wave_devices.py --wave "$WAVE_NAME")
+          echo "devices=$devices" >> "$GITHUB_OUTPUT"
+          echo "wave $WAVE_NAME -> $devices"
+
+  # Upgrade matrix: one job per device. `needs` both gate (when
+  # present) and discover. `if: always()` + explicit result checks
+  # let canary's skipped gate not block the matrix, while a failing
+  # gate does block it.
+  upgrade:
+    needs: [gate, discover]
+    if: |
+      always() &&
+      needs.discover.result == 'success' &&
+      (needs.gate.result == 'success' || needs.gate.result == 'skipped')
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    strategy:
+      max-parallel: ${{ inputs.parallelism }}
+      fail-fast: false
+      matrix:
+        device: ${{ fromJson(needs.discover.outputs.devices) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version-file: .tool-versions
+
+      - name: Install Ansible + collections
+        run: |
+          pip install 'ansible-core>=2.17'
+          ansible-galaxy collection install -r ansible/collections/requirements.yml
+
+      - name: Bring up multiplexed mock
+        run: make mock-up
+
+      - name: Record upgrade start time
+        id: start
+        run: echo "iso=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Preflight
+        working-directory: ansible
+        env:
+          DEVICE: ${{ matrix.device }}
+        run: ansible-playbook -i inventory/hosts.yml playbooks/preflight.yml --limit "$DEVICE"
+
+      - name: Upgrade
+        id: upgrade
+        working-directory: ansible
+        env:
+          DEVICE: ${{ matrix.device }}
+          TARGET_VERSION: ${{ inputs.target_version }}
+          TARGET_IMAGE: ${{ inputs.target_image_name }}
+        run: |
+          ansible-playbook -i inventory/hosts.yml playbooks/upgrade.yml \
+            --limit "$DEVICE" \
+            -e "f5_target_version=$TARGET_VERSION" \
+            -e "f5_target_image_name=$TARGET_IMAGE"
+
+      # Always run the artifact-emit step, even on upgrade failure —
+      # recording failures is the whole point of the gate.
+      - name: Emit artifact
+        if: always()
+        working-directory: observability/ingest
+        env:
+          WAVE_NAME: ${{ inputs.wave_name }}
+          DEVICE: ${{ matrix.device }}
+          START_ISO: ${{ steps.start.outputs.iso }}
+          UPGRADE_OUTCOME: ${{ steps.upgrade.outcome }}
+          WORKSPACE: ${{ github.workspace }}
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          uv sync
+          end_iso=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          # Map GitHub's step outcome onto the schema's Status literal.
+          case "$UPGRADE_OUTCOME" in
+            success)
+              status=success
+              error=""
+              ;;
+            failure)
+              status=failed
+              error="ansible-playbook upgrade.yml returned non-zero"
+              ;;
+            cancelled|skipped)
+              status=failed
+              error="upgrade step was $UPGRADE_OUTCOME"
+              ;;
+            *)
+              status=failed
+              error="unknown outcome: $UPGRADE_OUTCOME"
+              ;;
+          esac
+          mkdir -p "$WORKSPACE/artifact-out"
+          uv run python -m observability.ingest.writer \
+            --wave "$WAVE_NAME" \
+            --device "$DEVICE" \
+            --start "$START_ISO" \
+            --end "$end_iso" \
+            --status "$status" \
+            --error "$error" \
+            --out "$WORKSPACE/artifact-out/$DEVICE.json"
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          # Matches the gate job's download pattern: upgrade-{wave}-{device}.
+          name: upgrade-${{ inputs.wave_name }}-${{ matrix.device }}
+          path: artifact-out/${{ matrix.device }}.json
+          retention-days: 30
+
+      - name: Tear down mock
+        if: always()
+        run: make mock-down
+
+  # Push: aggregate every per-device artifact from this run and ship
+  # them to Pushgateway as one set. Skipped if PUSHGATEWAY_URL isn't
+  # configured — local/dev runs don't need a real Pushgateway, and
+  # the dashboard story is Phase 5.
+  push-metrics:
+    needs: [upgrade]
+    if: always() && needs.upgrade.result != 'skipped'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version-file: .tool-versions
+
+      - name: Download all wave artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: upgrade-${{ inputs.wave_name }}-*
+          path: wave-artifacts
+          merge-multiple: true
+
+      - name: Push to Prometheus Pushgateway
+        if: env.PUSHGATEWAY_URL != ''
+        working-directory: observability/ingest
+        env:
+          PUSHGATEWAY_URL: ${{ secrets.PUSHGATEWAY_URL }}
+          WAVE_NAME: ${{ inputs.wave_name }}
+          WORKSPACE: ${{ github.workspace }}
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          uv sync
+          uv run python -m observability.ingest.pusher \
+            --artifacts-dir "$WORKSPACE/wave-artifacts" \
+            --job nexusf5_wave_upgrade \
+            --wave "$WAVE_NAME"
+
+      - name: Skip push (no Pushgateway configured)
+        if: env.PUSHGATEWAY_URL == ''
+        env:
+          PUSHGATEWAY_URL: ${{ secrets.PUSHGATEWAY_URL }}
+        run: echo "PUSHGATEWAY_URL not set; skipping push (see .env.example)."

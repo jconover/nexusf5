@@ -1,0 +1,76 @@
+---
+# Wave 1/2/3 caller. Every invocation is explicitly gated on a prior
+# wave — the operator supplies its run ID. The reusable workflow's
+# gate job then runs `python -m observability.ingest.gate` against
+# the artifacts that run produced. Below-threshold / missing /
+# malformed artifacts all fail closed and the matrix does not start.
+#
+# The `wave_name` input chooses which inventory group runs. In Phase 3
+# only wave_1 is populated (45 devices); wave_2 / wave_3 exist as
+# placeholders and will currently fail the `discover` job with an
+# "empty matrix" error — that is the correct Phase 3 behaviour.
+
+name: upgrade-wave
+on:
+  workflow_dispatch:
+    inputs:
+      wave_name:
+        description: Which wave to run.
+        required: true
+        type: choice
+        options:
+          - wave_1
+          - wave_2
+          - wave_3
+      prior_wave:
+        description: Prior wave whose artifacts gate this run.
+        required: true
+        type: choice
+        default: canary
+        options:
+          - canary
+          - wave_1
+          - wave_2
+      prior_wave_run_id:
+        description: Run ID of the prior wave whose artifacts the gate reads.
+        required: true
+        type: string
+      parallelism:
+        description: Max concurrent devices in the matrix. Default 10.
+        required: false
+        type: number
+        default: 10
+      gate_threshold:
+        description: Minimum prior-wave success rate (0.0-1.0). Default 1.0.
+        required: false
+        type: number
+        default: 1.0
+      target_version:
+        description: BIG-IP target version.
+        required: true
+        type: string
+        default: "17.1.0"
+      target_image_name:
+        description: ISO name the install role registers.
+        required: true
+        type: string
+        default: BIGIP-17.1.0-0.0.3.iso
+
+# Opt JS actions onto Node 24 ahead of GHA's June-2026 default flip.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  wave:
+    uses: ./.github/workflows/_upgrade-wave-reusable.yml
+    with:
+      wave_name: ${{ inputs.wave_name }}
+      parallelism: ${{ fromJson(inputs.parallelism) }}
+      prior_wave: ${{ inputs.prior_wave }}
+      prior_wave_run_id: ${{ inputs.prior_wave_run_id }}
+      gate_threshold: ${{ fromJson(inputs.gate_threshold) }}
+      target_version: ${{ inputs.target_version }}
+      target_image_name: ${{ inputs.target_image_name }}
+      environment: ${{ inputs.wave_name }}
+    secrets:
+      PUSHGATEWAY_URL: ${{ secrets.PUSHGATEWAY_URL }}

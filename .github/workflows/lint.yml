@@ -9,6 +9,12 @@ concurrency:
   group: lint-${{ github.ref }}
   cancel-in-progress: true
 
+# Opt JS actions (checkout, setup-python, setup-uv) onto Node 24 ahead
+# of GHA's June-2026 default flip — silences the deprecation warnings
+# and exercises the newer runtime sooner.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   python:
     runs-on: ubuntu-latest
@@ -34,6 +40,30 @@ jobs:
         run: uv run mypy app
       - name: Pytest
         working-directory: mock-f5
+        run: uv run pytest -q
+
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version-file: .tool-versions
+      - name: Sync deps
+        working-directory: observability/ingest
+        run: uv sync
+      - name: Ruff check
+        working-directory: observability/ingest
+        run: uv run ruff check .
+      - name: Ruff format check
+        working-directory: observability/ingest
+        run: uv run ruff format --check .
+      - name: Mypy
+        working-directory: observability/ingest
+        run: uv run mypy
+      - name: Pytest
+        working-directory: observability/ingest
         run: uv run pytest -q
 
   yaml:

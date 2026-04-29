@@ -1,0 +1,40 @@
+{
+  "class": "AS3",
+  "action": "deploy",
+  "persist": true,
+  "declaration": {
+    "class": "ADC",
+    "schemaVersion": "3.50.0",
+    "id": "nexusf5-${device_hostname}-${tenant_name}",
+    "label": "nexusf5-${device_hostname}",
+    "${tenant_name}": {
+      "class": "Tenant",
+      "${app_name}": {
+        "class": "Application",
+        "template": "http",
+        "vip": {
+          "class": "Service_HTTP",
+          "virtualAddresses": ["${vip_address}"],
+          "pool": "pool_${app_name}"
+        },
+        "pool_${app_name}": {
+          "class": "Pool",
+          "monitors": ["http_lab"],
+          "members": [
+            {
+              "servicePort": ${pool_members[0].port},
+              "serverAddresses": ${jsonencode([for m in pool_members : m.ip])}
+            }
+          ]
+        },
+        "http_lab": {
+          "class": "Monitor",
+          "monitorType": "http",
+          "interval": ${monitor_interval},
+          "timeout": ${monitor_interval * 3 + 1},
+          "send": "GET / HTTP/1.0\r\n\r\n"
+        }
+      }
+    }
+  }
+}

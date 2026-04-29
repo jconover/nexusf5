@@ -1,2 +1,15 @@
 ---
-# No defaults — f5_target_version is required.
+# f5_target_version is required (no default; set per-wave or in playbook vars).
+
+# Path to the terraform environment whose state owns this device's DO/AS3
+# config. Defaults to the lab env so a freshly-cloned repo running the mock
+# test loop works. Per-environment group_vars override this for stage/prod.
+f5_postcheck_terraform_env_path: "{{ playbook_dir }}/../../terraform/environments/lab"
+
+# Path to the terraform binary. Override (e.g. tofu) per environment.
+f5_postcheck_terraform_binary: terraform
+
+# Skip the drift gate when terraform is not available (CI lanes that only
+# care about the version assertion). Set true to gate on terraform's exit
+# code.
+f5_postcheck_drift_enabled: true

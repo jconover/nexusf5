@@ -100,19 +100,19 @@ Trigger `upgrade-canary.yml` manually → 5 mock devices upgrade serially → ar
 
 ### Tasks
 
-- [ ] `terraform/modules/do-declaration/` — renders a DO declaration from HCL vars via `templatefile()`, submits via `bigip_do` resource
-- [ ] `terraform/modules/as3-declaration/` — same pattern for AS3 via `bigip_as3` resource
-- [ ] `terraform/environments/lab/` — points at mock server (using F5 provider's API endpoint override) with 5 devices wired up
-- [ ] Real DO/AS3 drift check in `f5_postcheck` role: runs `terraform plan -detailed-exitcode`, fails if exit code indicates drift
-- [ ] `terraform/modules/ve-instance/` — AWS BIG-IP VE provisioning (AMI lookup, VPC, subnets, security groups, IAM)
-- [ ] `terraform/immutable-track/` — end-to-end immutable example:
+- [x] `terraform/modules/do-declaration/` — renders a DO declaration from HCL vars via `templatefile()`, submits via `bigip_do` resource (PR 1)
+- [x] `terraform/modules/as3-declaration/` — same pattern for AS3 via `bigip_as3` resource (PR 1)
+- [x] `terraform/environments/lab/` — points at mock server (via the nginx adapter sidecar in `mock-f5/proxy/`, since the F5 provider has no path-prefix support) with 5 canary devices wired up (PR 1)
+- [x] Real DO/AS3 drift check in `f5_postcheck` role: runs `terraform plan -detailed-exitcode`, fails if exit code indicates drift (PR 1)
+- [ ] `terraform/modules/ve-instance/` — AWS BIG-IP VE provisioning (AMI lookup, VPC, subnets, security groups, IAM) (PR 2)
+- [ ] `terraform/immutable-track/` — end-to-end immutable example: (PR 2)
   - [ ] Provisions a new VE at target version
   - [ ] Applies same DO/AS3 declarations (proves portability)
   - [ ] Outputs new VE endpoint for synthetic validation
-- [ ] `ansible/playbooks/immutable-cutover.yml` — synthetic validation + DNS cutover stub + old-VE-drain
-- [ ] Integration test: `make integration` spins up a real AWS VE pair (tagged `purpose=nexusf5-test`, `auto-destroy=true`), runs preflight + one-shot upgrade round-trip, tears down. Runs in GitHub Actions on `workflow_dispatch` only — not on PRs (cost control).
-- [ ] ADR: `docs/decisions/001-hybrid-vs-immutable.md` explaining when each applies
-- [ ] ADR: `docs/decisions/002-terraform-scope.md` on why Terraform owns config but not upgrade flow
+- [ ] `ansible/playbooks/immutable-cutover.yml` — synthetic validation + DNS cutover stub + old-VE-drain (PR 2)
+- [ ] Integration test: `make integration` spins up a real AWS VE pair (tagged `purpose=nexusf5-test`, `auto-destroy=true`), runs preflight + one-shot upgrade round-trip, tears down. Runs in GitHub Actions on `workflow_dispatch` only — not on PRs (cost control). (PR 2)
+- [ ] ADR: `docs/decisions/003-hybrid-vs-immutable.md` explaining when each applies (PR 3 — renumbered from `001-hybrid-vs-immutable.md` because `001-mock-topology.md` already exists)
+- [x] ADR: `docs/decisions/002-terraform-scope.md` on why Terraform owns config but not upgrade flow (PR 1)
 
 ### Done when
 

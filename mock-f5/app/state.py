@@ -23,6 +23,7 @@ import uuid
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
+from typing import Any
 
 # Timings read lazily so tests can set MOCK_*_SECONDS with monkeypatch.setenv
 # and get instant effect without re-importing this module.
@@ -39,6 +40,14 @@ def reboot_seconds() -> float:
 def slow_reboot_multiplier() -> float:
     """Multiplier applied to reboot duration when slow_reboot chaos is set."""
     return float(os.environ.get("MOCK_SLOW_REBOOT_MULTIPLIER", "10"))
+
+
+def do_task_seconds() -> float:
+    return float(os.environ.get("MOCK_DO_TASK_SECONDS", "5"))
+
+
+def as3_task_seconds() -> float:
+    return float(os.environ.get("MOCK_AS3_TASK_SECONDS", "5"))
 
 
 class HAState(StrEnum):
@@ -86,6 +95,47 @@ class ChaosFlags:
     slow_reboot: bool = False
     drift_postcheck: bool = False
     post_boot_unhealthy: bool = False
+    fail_next_do: bool = False
+    fail_next_as3: bool = False
+
+
+@dataclass
+class DOTask:
+    """Async task created by POST /mgmt/shared/declarative-onboarding.
+
+    Mirrors the F5 DO task contract: while the task is RUNNING, the polling
+    endpoint returns HTTP 202; on success it returns 200 + the applied
+    declaration; on failure it returns 202 + an ERROR result. See PR-1
+    research notes in the mock README and the route handlers in
+    app/routers/extensions.py.
+    """
+
+    id: str
+    started_at: float
+    completes_at: float
+    declaration: dict[str, Any]
+    status: str = "RUNNING"
+    message: str = ""
+    will_fail: bool = False
+
+
+@dataclass
+class AS3Task:
+    """Async task created by POST /mgmt/shared/appsvcs/declare/{tenant}.
+
+    Status is carried in `results[0].code` (int), not in the HTTP status —
+    the AS3 polling endpoint always returns HTTP 200. `code == 0` is
+    in-progress, `code == 200` success, `code == 422` failure.
+    """
+
+    id: str
+    tenant: str
+    started_at: float
+    completes_at: float
+    declaration: dict[str, Any]
+    code: int = 0
+    message: str = "in progress"
+    will_fail: bool = False
 
 
 @dataclass
@@ -105,6 +155,10 @@ class DeviceState:
     ucs_backups: list[str] = field(default_factory=list)
     chaos: ChaosFlags = field(default_factory=ChaosFlags)
     rebooting_until: float | None = None
+    do_state: dict[str, Any] | None = None
+    as3_state: dict[str, dict[str, Any]] = field(default_factory=dict)
+    do_tasks: dict[str, DOTask] = field(default_factory=dict)
+    as3_tasks: dict[str, AS3Task] = field(default_factory=dict)
 
     @classmethod
     def fresh(cls, hostname: str, version: str = "16.1.3") -> DeviceState:
@@ -209,6 +263,55 @@ class DeviceState:
                 # depends on this to return the device to ACTIVE.
                 self.ha_state = HAState.ACTIVE
                 self.sync_state = SyncState.IN_SYNC
+        for do_task in self.do_tasks.values():
+            if do_task.status != "RUNNING":
+                continue
+            if current >= do_task.completes_at:
+                if do_task.will_fail:
+                    do_task.status = "ERROR"
+                    do_task.message = "DO declaration failed (chaos.fail_next_do)"
+                else:
+                    do_task.status = "OK"
+                    do_task.message = "success"
+                    self.do_state = do_task.declaration
+        for as3_task in self.as3_tasks.values():
+            if as3_task.code != 0:
+                continue
+            if current >= as3_task.completes_at:
+                if as3_task.will_fail:
+                    as3_task.code = 422
+                    as3_task.message = "declaration is invalid (chaos.fail_next_as3)"
+                else:
+                    as3_task.code = 200
+                    as3_task.message = "success"
+                    self.as3_state[as3_task.tenant] = as3_task.declaration
+
+    def start_do_task(self, declaration: dict[str, Any]) -> DOTask:
+        duration = do_task_seconds()
+        task = DOTask(
+            id=str(uuid.uuid4()),
+            started_at=now(),
+            completes_at=now() + duration,
+            declaration=declaration,
+            will_fail=self.chaos.fail_next_do,
+        )
+        self.chaos.fail_next_do = False
+        self.do_tasks[task.id] = task
+        return task
+
+    def start_as3_task(self, tenant: str, declaration: dict[str, Any]) -> AS3Task:
+        duration = as3_task_seconds()
+        task = AS3Task(
+            id=str(uuid.uuid4()),
+            tenant=tenant,
+            started_at=now(),
+            completes_at=now() + duration,
+            declaration=declaration,
+            will_fail=self.chaos.fail_next_as3,
+        )
+        self.chaos.fail_next_as3 = False
+        self.as3_tasks[task.id] = task
+        return task
 
 
 class StateStore:

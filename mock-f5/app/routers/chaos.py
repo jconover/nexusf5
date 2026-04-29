@@ -91,6 +91,20 @@ def chaos_post_boot_unhealthy(hostname: str, store: StoreDep) -> dict[str, str]:
     return {"hostname": hostname, "flag": "post_boot_unhealthy", "value": "true"}
 
 
+@router.post("/_chaos/{hostname}/fail-next-do")
+def chaos_fail_next_do(hostname: str, store: StoreDep) -> dict[str, str]:
+    device = _resolve(store, hostname)
+    device.chaos.fail_next_do = True
+    return {"hostname": hostname, "flag": "fail_next_do", "value": "true"}
+
+
+@router.post("/_chaos/{hostname}/fail-next-as3")
+def chaos_fail_next_as3(hostname: str, store: StoreDep) -> dict[str, str]:
+    device = _resolve(store, hostname)
+    device.chaos.fail_next_as3 = True
+    return {"hostname": hostname, "flag": "fail_next_as3", "value": "true"}
+
+
 @router.post("/_chaos/{hostname}/reset")
 def chaos_reset(hostname: str, store: StoreDep) -> dict[str, str]:
     device = _resolve(store, hostname)
@@ -98,6 +112,8 @@ def chaos_reset(hostname: str, store: StoreDep) -> dict[str, str]:
     device.chaos.slow_reboot = False
     device.chaos.drift_postcheck = False
     device.chaos.post_boot_unhealthy = False
+    device.chaos.fail_next_do = False
+    device.chaos.fail_next_as3 = False
     return {"hostname": hostname, "flag": "all", "value": "false"}
 
 
@@ -108,7 +124,7 @@ def chaos_reset_device(hostname: str, store: StoreDep) -> dict[str, str]:
     Integration tests call this between scenarios so they can start from a
     known baseline on a single long-lived container without restarting
     docker compose. Clears chaos flags, volumes, version, operations,
-    UCS list, HA/sync, and any in-flight reboot window.
+    UCS list, HA/sync, any in-flight reboot window, and DO/AS3 state.
     """
     device = _resolve(store, hostname)
     device.version = "16.1.3"
@@ -121,8 +137,14 @@ def chaos_reset_device(hostname: str, store: StoreDep) -> dict[str, str]:
     device.operations = []
     device.ucs_backups = []
     device.rebooting_until = None
+    device.do_state = None
+    device.as3_state = {}
+    device.do_tasks = {}
+    device.as3_tasks = {}
     device.chaos.fail_next_install = False
     device.chaos.slow_reboot = False
     device.chaos.drift_postcheck = False
     device.chaos.post_boot_unhealthy = False
+    device.chaos.fail_next_do = False
+    device.chaos.fail_next_as3 = False
     return {"hostname": hostname, "state": "fresh"}

@@ -1,10 +1,13 @@
 ---
 # f5_postcheck — post-upgrade validation.
 #
-# Phase 2: validate running version matches target. Phase 4 replaces this
-# with a real DO/AS3 drift check via `terraform plan -detailed-exitcode`.
-# The chaos flag `chaos.drift_postcheck` is already wired in mock state
-# so the Phase 4 drop-in test can use it immediately.
+# Two gates, both hard:
+#   1. Running version matches f5_target_version.
+#   2. `terraform plan -detailed-exitcode` against the env's DO/AS3
+#      declarations exits 0 (no drift).
+#
+# The mock chaos flag `chaos.drift_postcheck` is wired into the DO/AS3 read
+# endpoints so integration tests can prove the drift gate fires correctly.
 
 - name: Postcheck | fetch running version
   # raw-icontrol-rest
@@ -36,7 +39,32 @@
     success_msg: "Postcheck version ok ({{ f5_postcheck_fact_version }})"
   tags: [postcheck]
 
-- name: Postcheck | DO/AS3 drift check (Phase 4 stub)
-  ansible.builtin.debug:
-    msg: "DO/AS3 drift check deferred to Phase 4 (terraform plan -detailed-exitcode)."
-  tags: [postcheck]
+- name: Postcheck | run terraform plan -detailed-exitcode (DO/AS3 drift gate)
+  # `terraform plan -detailed-exitcode` returns 0 (no changes), 1 (error),
+  # or 2 (changes). We treat 1 and 2 as fail; only 0 lets the wave proceed.
+  ansible.builtin.command:
+    cmd: "{{ f5_postcheck_terraform_binary }} plan -detailed-exitcode -no-color -refresh=true"
+    chdir: "{{ f5_postcheck_terraform_env_path }}"
+  environment:
+    TF_IN_AUTOMATION: "1"
+    TF_INPUT: "0"
+  register: f5_postcheck_drift
+  changed_when: false
+  failed_when: false
+  run_once: true
+  delegate_to: localhost
+  when: f5_postcheck_drift_enabled | bool
+  tags: [postcheck, terraform]
+
+- name: Postcheck | assert no DO/AS3 drift
+  ansible.builtin.assert:
+    that:
+      - f5_postcheck_drift.rc == 0
+    fail_msg: >-
+      DO/AS3 drift detected (terraform plan exit {{ f5_postcheck_drift.rc }}).
+      See runbooks/06-postcheck-drift.md for diagnosis.
+    success_msg: "DO/AS3 drift gate ok (terraform plan exit 0)"
+  run_once: true
+  delegate_to: localhost
+  when: f5_postcheck_drift_enabled | bool
+  tags: [postcheck, terraform]

@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "1.40.0",
+  "class": "DO",
+  "async": true,
+  "label": "nexusf5-${device_hostname}",
+  "declaration": {
+    "schemaVersion": "1.40.0",
+    "class": "Device",
+    "Common": {
+      "class": "Tenant",
+      "mySystem": {
+        "class": "System",
+        "hostname": "${device_hostname}",
+        "autoPhonehome": false,
+        "preserveOrigDhcpRoutes": true
+      },
+      "myDns": {
+        "class": "DNS",
+        "nameServers": ${jsonencode(dns_servers)}
+      },
+      "myNtp": {
+        "class": "NTP",
+        "servers": ${jsonencode(ntp_servers)},
+        "timezone": "${timezone}"
+      }%{ if length(vlans) > 0 },
+%{ for v in vlans }
+      "${v.name}": {
+        "class": "VLAN",
+        "tag": ${v.tag},
+        "interfaces": [
+          { "name": "${v.interface}", "tagged": false }
+        ]
+      }%{ if v != vlans[length(vlans) - 1] },%{ endif }
+%{ endfor }
+%{ endif }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+#
+# aws_account_id is the AWS account this env applies against. The provider's
+# allowed_account_ids check refuses to apply if the resolved caller identity
+# differs, so a stray AWS_PROFILE in your shell can't drop traffic into the
+# wrong account. Treat the account ID as private — it's not a credential,
+# but it's not advertised either, and AWS docs recommend keeping it out of
+# public artifacts.
+aws_account_id     = "123456789012"
+budget_alert_email = "you@example.com"

@@ -1,0 +1,72 @@
+---
+# Minimal OIDC trust-policy verification workflow.
+#
+# Does one thing: assume the GHA role via OIDC and run
+# `aws sts get-caller-identity`. That's it. Use this as the iteration
+# target while debugging trust-policy bugs — each run is ~30s of runner
+# time, no AWS resources created. The integration workflow (which spins up
+# real EC2) only ever runs after this one is green.
+#
+# Trigger: workflow_dispatch only. No PR/push triggers — the trust policy
+# is scoped to specific branches and environments, and defense in depth
+# means not even attempting the assume-role from a PR fork.
+#
+# When debugging trust-policy bugs, the failure message from
+# aws-actions/configure-aws-credentials includes the exact `sub` claim AWS
+# saw. Compare against `terraform output trusted_subjects` in
+# terraform/environments/shared/.
+
+name: test-aws-auth
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: GitHub environment to assume the role from. The trust policy must include a matching subject claim.
+        required: false
+        type: choice
+        options:
+          - none
+          - nexusf5-aws-test
+          - nexusf5-aws-integration
+        default: none
+
+permissions:
+  id-token: write   # OIDC token mint
+  contents: read    # checkout
+
+concurrency:
+  group: test-aws-auth
+  cancel-in-progress: true
+
+env:
+  AWS_REGION: us-east-2
+
+jobs:
+  auth:
+    runs-on: ubuntu-latest
+    # Bind to a GitHub environment when requested so the OIDC sub claim
+    # becomes `repo:OWNER/REPO:environment:ENV_NAME` instead of the
+    # ref-scoped form. Trust policy accepts both shapes (see
+    # trusted_branch_refs and trusted_environments in shared/variables.tf).
+    environment: ${{ inputs.environment != 'none' && inputs.environment || '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-test-aws-auth
+
+      - name: Verify caller identity and region access
+        run: |
+          set -euo pipefail
+          echo "Authenticated as:"
+          aws sts get-caller-identity
+          echo
+          echo "Listing AZs in $AWS_REGION:"
+          aws ec2 describe-availability-zones \
+            --query 'AvailabilityZones[].ZoneName' \
+            --output text

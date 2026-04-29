@@ -111,6 +111,7 @@ Trigger `upgrade-canary.yml` manually → 5 mock devices upgrade serially → ar
   - [ ] Outputs new VE endpoint for synthetic validation
 - [ ] `ansible/playbooks/immutable-cutover.yml` — synthetic validation + DNS cutover stub + old-VE-drain (PR 2)
 - [ ] Integration test: `make integration` spins up a real AWS VE pair (tagged `purpose=nexusf5-test`, `auto-destroy=true`), runs preflight + one-shot upgrade round-trip, tears down. Runs in GitHub Actions on `workflow_dispatch` only — not on PRs (cost control). (PR 2)
+- [ ] **Pre-merge for PR 2:** drop `refs/heads/phase-4-aws-ve` from `trusted_branch_refs` in `terraform/environments/shared/variables.tf`, re-apply, verify trust policy via `test-aws-auth.yml` from `main`. A feature branch in the trust policy is permanent attack surface — branch can be re-created post-merge by anyone with write access and the policy still accepts it.
 - [ ] ADR: `docs/decisions/003-hybrid-vs-immutable.md` explaining when each applies (PR 3 — renumbered from `001-hybrid-vs-immutable.md` because `001-mock-topology.md` already exists)
 - [x] ADR: `docs/decisions/002-terraform-scope.md` on why Terraform owns config but not upgrade flow (PR 1)
 

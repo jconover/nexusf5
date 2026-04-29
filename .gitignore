@@ -22,6 +22,9 @@ build/
 .terraform/
 .terraform.lock.hcl
 crash.log
+# Shared env carries an operator-specific email in tfvars; lab env's tfvars
+# is intentionally checked in (port mappings, no secrets).
+terraform/environments/shared/terraform.tfvars
 
 # Ansible
 *.retry

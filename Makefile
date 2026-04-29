@@ -1,5 +1,5 @@
 .PHONY: help install-deps lint lint-ci test test-unit integration mock-up mock-down mock-logs mock-build clean \
-        terraform-fmt terraform-validate lab-up lab-down
+        terraform-fmt terraform-validate lab-up lab-down shared-up shared-down
 
 # Single source of truth for the uv version. The workflow reads the same
 # file via setup-uv's version-file input; the Dockerfile takes it as a
@@ -30,7 +30,7 @@ terraform-fmt: ## Check terraform formatting (fails if any file would change)
 	terraform fmt -recursive -check terraform/
 
 terraform-validate: ## Validate every terraform module + environment
-	@for d in terraform/modules/do-declaration terraform/modules/as3-declaration terraform/environments/lab; do \
+	@for d in terraform/modules/do-declaration terraform/modules/as3-declaration terraform/environments/lab terraform/environments/shared; do \
 	  echo "==> terraform validate $$d"; \
 	  (cd $$d && terraform init -backend=false -upgrade=false -input=false >/dev/null && terraform validate) || exit 1; \
 	done
@@ -80,6 +80,16 @@ lab-up: mock-up ## Apply the lab terraform env against the running mock + proxy
 
 lab-down: ## Destroy the lab terraform env
 	cd terraform/environments/lab && terraform destroy -auto-approve
+
+shared-up: ## Apply the account-shared terraform env (budget alarm + GitHub OIDC role)
+	@if [ ! -f terraform/environments/shared/terraform.tfvars ]; then \
+	  echo "==> terraform/environments/shared/terraform.tfvars missing — copy from terraform.tfvars.example and set budget_alert_email."; \
+	  exit 1; \
+	fi
+	cd terraform/environments/shared && terraform init -input=false && terraform apply
+
+shared-down: ## Destroy the shared terraform env (rarely needed; long-lived by design)
+	cd terraform/environments/shared && terraform destroy
 
 clean: ## Remove caches, virtualenvs, and transient artifacts
 	rm -rf mock-f5/.venv mock-f5/.pytest_cache mock-f5/.ruff_cache mock-f5/.mypy_cache

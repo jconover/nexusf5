@@ -147,6 +147,7 @@ Trigger `upgrade-canary.yml` manually → 5 mock devices upgrade serially → ar
   - [ ] Tech stack badges
   - [ ] CI status badges for all four workflows (lint, ingest, python, ansible)
   - [ ] "What this demonstrates" section mapping capabilities (orchestration at scale, declarative config, automated rollback, modernization path) to concrete files in the repo
+- [ ] Resolve pre-existing yamllint warning on `ansible/roles/f5_backup/tasks/main.yml:10` (line >140 chars; non-fatal, predates Phase 4 PR 1)
 - [ ] Final portfolio pass: every `TODO` comment in code addressed or documented, every role has a README, every workflow has a comment block explaining what triggers it
 
 ### Done when

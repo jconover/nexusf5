@@ -34,14 +34,35 @@ Operational (root-scoped — report on the whole multiplex):
 - `GET /health` — liveness + list of all devices this container serves
 - `GET /metrics` — Prometheus exposition format, labelled by hostname
 
+DO and AS3 (Phase 4 — F5 provider's `bigip_do` / `bigip_as3` async contract):
+
+- `POST /{hostname}/mgmt/shared/declarative-onboarding` — submit DO declaration; returns 202 + task `id`
+- `GET  /{hostname}/mgmt/shared/declarative-onboarding/task/{id}` — poll: 202+RUNNING, 200+OK, or 202+ERROR
+- `GET  /{hostname}/mgmt/shared/declarative-onboarding` — last applied declaration (204 if none)
+- `POST /{hostname}/mgmt/shared/appsvcs/declare/{tenant}` — submit AS3 declaration; returns 202 + task `id`
+- `GET  /{hostname}/mgmt/shared/appsvcs/task/{id}` — poll: HTTP 200, status carried in `results[0].code` (0=running, 200=OK, 422=fail)
+- `GET  /{hostname}/mgmt/shared/appsvcs/declare/{tenant}` — last applied declaration for tenant (404 if none)
+
 Chaos (hostname-scoped):
 
 - `POST /_chaos/{hostname}/fail-next-install`
 - `POST /_chaos/{hostname}/slow-reboot`
 - `POST /_chaos/{hostname}/drift-postcheck`
 - `POST /_chaos/{hostname}/post-boot-unhealthy`
+- `POST /_chaos/{hostname}/fail-next-do`
+- `POST /_chaos/{hostname}/fail-next-as3`
 - `POST /_chaos/{hostname}/reset`
 - `POST /_chaos/{hostname}/reset-device`
+
+## Proxy adapter sidecar
+
+The F5 Terraform provider treats `address` as a bare host with no path-prefix
+support, so it cannot reach the multiplexed mock directly. The `proxy/`
+directory builds an nginx sidecar that listens on a dedicated port per
+canary device (8101–8105), rewrites `/mgmt/...` to `/<hostname>/mgmt/...`,
+and proxies to `mock-f5:8080`. See
+[`proxy/README.md`](proxy/README.md) for the routing rationale and the
+provider source-code references that motivate it.
 
 ## Topology
 

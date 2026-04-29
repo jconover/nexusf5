@@ -63,3 +63,23 @@ class UtilBashCommand(IControlCommand):
     """
 
     utilCmdArgs: str | None = None  # noqa: N815 — F5 wire field name, keep as-is
+
+
+class DODeclaration(BaseModel):
+    """POST /mgmt/shared/declarative-onboarding body.
+
+    Real DO declarations are deeply nested and large; the mock just stores
+    them verbatim and replays them on the read endpoint, so any extra fields
+    are accepted.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+
+class AS3Declaration(BaseModel):
+    """POST /mgmt/shared/appsvcs/declare/{tenant} body.
+
+    Same permissive shape as DO. The tenant comes from the URL, not the body.
+    """
+
+    model_config = ConfigDict(extra="allow")

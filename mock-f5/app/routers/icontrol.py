@@ -333,6 +333,22 @@ def util_bash(device: DeviceDep, body: UtilBashCommand) -> Any:
     }
 
 
+# GET /mgmt/tm/net/self
+# Connectivity probe used by the F5 Terraform provider on every session
+# create. Returning an empty self-IP collection satisfies the probe without
+# committing the mock to modelling self-IP state.
+# https://clouddocs.f5.com/api/icontrol-rest/APIRef_tm_net_self.html
+@router.get("/net/self")
+def net_self(device: DeviceDep) -> Any:
+    if (blocked := _reboot_guard(device)) is not None:
+        return blocked
+    return {
+        "kind": "tm:net:self:selfcollectionstate",
+        "selfLink": f"https://{device.hostname}/mgmt/tm/net/self",
+        "items": [],
+    }
+
+
 # POST /mgmt/tm/sys/failover
 # Toggle HA state. Phase 2 validates idempotency via the Ansible role.
 # https://clouddocs.f5.com/api/icontrol-rest/APIRef_tm_sys_failover.html

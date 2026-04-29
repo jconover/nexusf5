@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.routers import chaos, icontrol
+from app.routers import chaos, extensions, icontrol
 from app.state import build_store_from_env, build_store_from_manifest
 
 
@@ -33,7 +33,12 @@ app = FastAPI(
     title="NexusF5 Mock iControl REST",
     version="0.2.0",
     lifespan=lifespan,
+    # F5 clients (the Terraform provider notably) POST to paths with and
+    # without trailing slashes interchangeably and do not follow POST 307s.
+    # Disabling redirect_slashes makes both forms hit the same handler.
+    redirect_slashes=False,
 )
 
 app.include_router(icontrol.router)
+app.include_router(extensions.router)
 app.include_router(chaos.router)

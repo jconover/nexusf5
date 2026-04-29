@@ -1,0 +1,29 @@
+{
+  "devices": [
+    {
+      "hostname": "bigip-lab-01",
+      "version": "16.1.3",
+      "port": 8101
+    },
+    {
+      "hostname": "bigip-lab-02",
+      "version": "16.1.3",
+      "port": 8102
+    },
+    {
+      "hostname": "bigip-lab-03",
+      "version": "16.1.3",
+      "port": 8103
+    },
+    {
+      "hostname": "bigip-lab-04",
+      "version": "16.1.3",
+      "port": 8104
+    },
+    {
+      "hostname": "bigip-lab-05",
+      "version": "16.1.3",
+      "port": 8105
+    }
+  ]
+}

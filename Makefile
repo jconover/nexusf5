@@ -30,7 +30,7 @@ terraform-fmt: ## Check terraform formatting (fails if any file would change)
 	terraform fmt -recursive -check terraform/
 
 terraform-validate: ## Validate every terraform module + environment
-	@for d in terraform/modules/do-declaration terraform/modules/as3-declaration terraform/environments/lab terraform/environments/shared; do \
+	@for d in terraform/modules/do-declaration terraform/modules/as3-declaration terraform/modules/ve-instance terraform/environments/lab terraform/environments/shared terraform/environments/integration; do \
 	  echo "==> terraform validate $$d"; \
 	  (cd $$d && terraform init -backend=false -upgrade=false -input=false >/dev/null && terraform validate) || exit 1; \
 	done
@@ -71,9 +71,12 @@ test: mock-up ## Full suite: unit + integration (drives ansible-playbook) + pref
 	cd ansible && ansible-playbook -i inventory/hosts.yml playbooks/preflight.yml --limit lab
 	@echo "==> Test suite green. Mock is still up — run 'make mock-down' when done."
 
-integration: ## (Phase 4) AWS BIG-IP VE round-trip integration test
-	@echo "Phase 4: AWS VE integration is not implemented yet."
-	@exit 1
+integration: ## AWS BIG-IP VE round-trip — provisions HA pair, runs preflight, tears down (45-min hard timeout)
+	@if [ ! -f terraform/environments/integration/terraform.tfvars ]; then \
+	  echo "==> terraform/environments/integration/terraform.tfvars missing — copy from terraform.tfvars.example and set aws_account_id."; \
+	  exit 1; \
+	fi
+	python3 tools/integration_wrapper.py
 
 lab-up: mock-up ## Apply the lab terraform env against the running mock + proxy
 	cd terraform/environments/lab && terraform init -input=false && terraform apply -auto-approve

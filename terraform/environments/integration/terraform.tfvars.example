@@ -1,0 +1,14 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+#
+# Most knobs use sensible defaults (Good 1Gbps PAYG, 17.1.x AMI, m5.large,
+# 10.99.0.0/16 VPC). Override only when you know why.
+
+aws_account_id = "123456789012"
+
+# Optional: pin specific F5 AMI versions for reproducibility.
+# f5_version_pattern = "F5 BIGIP-17.1.1.1*"
+
+# Optional: lock mgmt ingress to a known fixed CIDR instead of letting the
+# env detect the runner's egress IP. Use this when your runner sits behind
+# a NAT and the egress IP isn't stable. Never set to 0.0.0.0/0.
+# explicit_mgmt_cidrs = ["203.0.113.42/32"]

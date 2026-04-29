@@ -1,4 +1,5 @@
-.PHONY: help install-deps lint lint-ci test test-unit integration mock-up mock-down mock-logs mock-build clean
+.PHONY: help install-deps lint lint-ci test test-unit integration mock-up mock-down mock-logs mock-build clean \
+        terraform-fmt terraform-validate lab-up lab-down
 
 # Single source of truth for the uv version. The workflow reads the same
 # file via setup-uv's version-file input; the Dockerfile takes it as a
@@ -15,7 +16,7 @@ install-deps: ## Install Python + Ansible collection dependencies
 	cd mock-f5 && uv sync
 	ansible-galaxy collection install -r ansible/collections/requirements.yml --force
 
-lint: ## Run all linters against host tooling — fast, for iteration
+lint: terraform-fmt ## Run all linters against host tooling — fast, for iteration
 	cd mock-f5 && uv run ruff check app tests
 	cd mock-f5 && uv run ruff format --check app tests
 	cd mock-f5 && uv run mypy app
@@ -24,6 +25,15 @@ lint: ## Run all linters against host tooling — fast, for iteration
 	cd observability/ingest && uv run mypy
 	yamllint .
 	cd ansible && ANSIBLE_ROLES_PATH=$(PWD)/ansible/roles ansible-lint playbooks/ roles/
+
+terraform-fmt: ## Check terraform formatting (fails if any file would change)
+	terraform fmt -recursive -check terraform/
+
+terraform-validate: ## Validate every terraform module + environment
+	@for d in terraform/modules/do-declaration terraform/modules/as3-declaration terraform/environments/lab; do \
+	  echo "==> terraform validate $$d"; \
+	  (cd $$d && terraform init -backend=false -upgrade=false -input=false >/dev/null && terraform validate) || exit 1; \
+	done
 
 lint-ci: ## Run lint exactly as CI does (containerized) — authoritative pre-push check
 	@echo "==> CI-parity lint in python:3.12-slim with uv=$(UV_VERSION)"
@@ -64,6 +74,12 @@ test: mock-up ## Full suite: unit + integration (drives ansible-playbook) + pref
 integration: ## (Phase 4) AWS BIG-IP VE round-trip integration test
 	@echo "Phase 4: AWS VE integration is not implemented yet."
 	@exit 1
+
+lab-up: mock-up ## Apply the lab terraform env against the running mock + proxy
+	cd terraform/environments/lab && terraform init -input=false && terraform apply -auto-approve
+
+lab-down: ## Destroy the lab terraform env
+	cd terraform/environments/lab && terraform destroy -auto-approve
 
 clean: ## Remove caches, virtualenvs, and transient artifacts
 	rm -rf mock-f5/.venv mock-f5/.pytest_cache mock-f5/.ruff_cache mock-f5/.mypy_cache

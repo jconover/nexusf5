@@ -83,15 +83,14 @@ pre-commit install
 
 ## Development status
 
-**Phase 3 in progress** (PR 1 of 2 merged). Phases 1 and 2 complete:
-per-device upgrade + rollback works end-to-end against the mock fleet
-(happy path plus `fail-next-install`, `slow-reboot`, and
-`post-boot-unhealthy` chaos scenarios). Phase 3 PR 1 scales the mock
-to 50 devices behind one multiplexed container and splits the inventory
-across `canary` / `wave_1` / `wave_2` / `wave_3` groups, enforced by a
-pytest that fails on wave overlap. Phase 3 PR 2 adds the GitHub Actions
-wave workflows, artifact publishing, and Pushgateway ingestion.
-See [`TODO.md`](TODO.md) for the full phase plan.
+**Phase 4 in progress** (PR 1 of 3 merged). Phases 1–3 complete.
+Phase 4 PR 1 introduces the Terraform DO/AS3 modules, a lab environment
+wired to the canary mock devices via an nginx adapter sidecar (the F5
+provider has no path-prefix support, so each device gets a dedicated
+port at 8101–8105), and a real `terraform plan -detailed-exitcode`
+drift gate in the `f5_postcheck` role. PR 2 adds the AWS BIG-IP VE
+modules and the immutable track; PR 3 ships ADR 003. See
+[`TODO.md`](TODO.md) for the full phase plan.
 
 Run `make test-unit` for the fast dev loop (in-process, ~0.4s). Run
 `make test` for the full suite including integration tests that drive

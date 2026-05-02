@@ -1,5 +1,5 @@
-.PHONY: help install-deps lint lint-ci test test-unit integration mock-up mock-down mock-logs mock-build clean \
-        terraform-fmt terraform-validate lab-up lab-down
+.PHONY: help install-deps lint lint-ci test test-unit integration integration-debug mock-up mock-down mock-logs mock-build clean \
+        terraform-fmt terraform-validate lab-up lab-down shared-up shared-down
 
 # Single source of truth for the uv version. The workflow reads the same
 # file via setup-uv's version-file input; the Dockerfile takes it as a
@@ -30,7 +30,7 @@ terraform-fmt: ## Check terraform formatting (fails if any file would change)
 	terraform fmt -recursive -check terraform/
 
 terraform-validate: ## Validate every terraform module + environment
-	@for d in terraform/modules/do-declaration terraform/modules/as3-declaration terraform/environments/lab; do \
+	@for d in terraform/modules/do-declaration terraform/modules/as3-declaration terraform/modules/ve-instance terraform/environments/lab terraform/environments/shared terraform/environments/integration; do \
 	  echo "==> terraform validate $$d"; \
 	  (cd $$d && terraform init -backend=false -upgrade=false -input=false >/dev/null && terraform validate) || exit 1; \
 	done
@@ -71,15 +71,36 @@ test: mock-up ## Full suite: unit + integration (drives ansible-playbook) + pref
 	cd ansible && ansible-playbook -i inventory/hosts.yml playbooks/preflight.yml --limit lab
 	@echo "==> Test suite green. Mock is still up — run 'make mock-down' when done."
 
-integration: ## (Phase 4) AWS BIG-IP VE round-trip integration test
-	@echo "Phase 4: AWS VE integration is not implemented yet."
-	@exit 1
+integration: ## AWS BIG-IP VE round-trip — provisions HA pair, runs preflight, tears down (45-min hard timeout)
+	@if [ ! -f terraform/environments/integration/terraform.tfvars ]; then \
+	  echo "==> terraform/environments/integration/terraform.tfvars missing — copy from terraform.tfvars.example and set aws_account_id."; \
+	  exit 1; \
+	fi
+	python3 tools/integration_wrapper.py
+
+integration-debug: ## Same as integration but leaves resources up for SSH inspection (sets INTEGRATION_SKIP_DESTROY=1). Use for the inner loop of getting bootstrap working — destroy manually when done. NOT for CI.
+	@if [ ! -f terraform/environments/integration/terraform.tfvars ]; then \
+	  echo "==> terraform/environments/integration/terraform.tfvars missing — copy from terraform.tfvars.example and set aws_account_id."; \
+	  exit 1; \
+	fi
+	@echo "==> integration-debug: SKIP_DESTROY=1, manual cleanup required after run."
+	INTEGRATION_SKIP_DESTROY=1 python3 tools/integration_wrapper.py
 
 lab-up: mock-up ## Apply the lab terraform env against the running mock + proxy
 	cd terraform/environments/lab && terraform init -input=false && terraform apply -auto-approve
 
 lab-down: ## Destroy the lab terraform env
 	cd terraform/environments/lab && terraform destroy -auto-approve
+
+shared-up: ## Apply the account-shared terraform env (budget alarm + GitHub OIDC role)
+	@if [ ! -f terraform/environments/shared/terraform.tfvars ]; then \
+	  echo "==> terraform/environments/shared/terraform.tfvars missing — copy from terraform.tfvars.example and set budget_alert_email."; \
+	  exit 1; \
+	fi
+	cd terraform/environments/shared && terraform init -input=false && terraform apply
+
+shared-down: ## Destroy the shared terraform env (rarely needed; long-lived by design)
+	cd terraform/environments/shared && terraform destroy
 
 clean: ## Remove caches, virtualenvs, and transient artifacts
 	rm -rf mock-f5/.venv mock-f5/.pytest_cache mock-f5/.ruff_cache mock-f5/.mypy_cache

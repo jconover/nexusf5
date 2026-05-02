@@ -111,6 +111,7 @@ Trigger `upgrade-canary.yml` manually → 5 mock devices upgrade serially → ar
   - [ ] Outputs new VE endpoint for synthetic validation
 - [ ] `ansible/playbooks/immutable-cutover.yml` — synthetic validation + DNS cutover stub + old-VE-drain (PR 2)
 - [ ] Integration test: `make integration` spins up a real AWS VE pair (tagged `purpose=nexusf5-test`, `auto-destroy=true`), runs preflight + one-shot upgrade round-trip, tears down. Runs in GitHub Actions on `workflow_dispatch` only — not on PRs (cost control). (PR 2)
+- [ ] **Pre-merge for PR 2:** drop `refs/heads/phase-4-aws-ve` from `trusted_branch_refs` in `terraform/environments/shared/variables.tf`, re-apply, verify trust policy via `test-aws-auth.yml` from `main`. A feature branch in the trust policy is permanent attack surface — branch can be re-created post-merge by anyone with write access and the policy still accepts it.
 - [ ] ADR: `docs/decisions/003-hybrid-vs-immutable.md` explaining when each applies (PR 3 — renumbered from `001-hybrid-vs-immutable.md` because `001-mock-topology.md` already exists)
 - [x] ADR: `docs/decisions/002-terraform-scope.md` on why Terraform owns config but not upgrade flow (PR 1)
 
@@ -148,6 +149,7 @@ Trigger `upgrade-canary.yml` manually → 5 mock devices upgrade serially → ar
   - [ ] CI status badges for all four workflows (lint, ingest, python, ansible)
   - [ ] "What this demonstrates" section mapping capabilities (orchestration at scale, declarative config, automated rollback, modernization path) to concrete files in the repo
 - [ ] Resolve pre-existing yamllint warning on `ansible/roles/f5_backup/tasks/main.yml:10` (line >140 chars; non-fatal, predates Phase 4 PR 1)
+- [ ] Align mock iControl REST listen port with real F5 17.1.x default (8443 instead of 8080). Phase 4 PR 2 follow-up: real BIG-IP listens on 8443; mock listens on 8080 (HTTP, no TLS — different shape). Mismatch is currently fine because the lab terraform env routes via the proxy adapter using path-prefix, but a future test that exercises the integration wrapper against the mock would surface a "works against mock, fails against real F5" gap. Touches `mock-f5/Dockerfile` (EXPOSE + uvicorn --port), `mock-f5/docker-compose.yml` port mapping, `proxy/` adapter targets, and any healthcheck URLs.
 - [ ] Final portfolio pass: every `TODO` comment in code addressed or documented, every role has a README, every workflow has a comment block explaining what triggers it
 
 ### Done when

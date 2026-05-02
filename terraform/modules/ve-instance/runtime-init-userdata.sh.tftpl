@@ -1,0 +1,146 @@
+#!/bin/bash
+#
+# F5 BIG-IP VE first-boot bootstrap via f5-bigip-runtime-init.
+#
+# Rendered by terraform's templatefile() with these vars:
+#   admin_password : the password to assign to the BIG-IP "admin" user
+#   hostname       : the BIG-IP hostname (e.g. bigip-aws-01)
+#
+# This script runs once on first boot via BIG-IP's cloud-init. It does NOT
+# call tmsh directly. Instead it installs and invokes f5-bigip-runtime-init,
+# whose `bigip_ready_enabled` phase blocks until mcpd is ready before
+# posting the DO declaration. That ordering is the whole point — it's why
+# this user_data does not race the mcpd-not-yet-ready window that broke the
+# previous tmsh-based attempt.
+#
+# Citations are inline below. Top-level references:
+#   - https://github.com/F5Networks/f5-bigip-runtime-init  (README, schema)
+#   - https://github.com/F5Networks/f5-bigip-runtime-init/releases/tag/2.0.3
+#   - https://github.com/F5Networks/f5-bigip-runtime-init/blob/main/SCHEMA.md
+#   - examples/runtime_configs/full_example_aws_1nic.yaml  (1-NIC AWS PAYG ref)
+#   - examples/runtime_configs/snippets/extension_services_inline.yaml
+#       (DO User class shape for setting an admin password)
+
+set -euxo pipefail
+
+# F5 documents /var/log/cloud as the runtime-init log destination
+# (`controls.logFilename` example value in SCHEMA.md). Wrapper script
+# logs go to /var/log/cloud/startup-script.log so the EC2 console output
+# fetched by integration_wrapper.py contains both runtime-init's own log
+# and this script's trace.
+mkdir -p /var/log/cloud /config/cloud /var/config/rest/downloads
+exec > >(tee -a /var/log/cloud/startup-script.log) 2>&1
+echo "[runtime-init-userdata] start $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+# Runtime-init config. Top-level keys come from SCHEMA.md:
+#   controls, pre_onboard_enabled, runtime_parameters, bigip_ready_enabled,
+#   extension_packages, extension_services, post_onboard_enabled, post_hook
+#
+# `pre_onboard_enabled: []` and `bigip_ready_enabled: []` are intentional
+# empty lists — we want the implicit mcpd-ready barrier between them but
+# no extra commands. The race fix lives in that barrier: extension_services
+# below post their DO declaration via iControl REST, which only happens
+# AFTER bigip_ready_enabled fires (i.e. after mcpd is up).
+#
+# `type: static` runtime_parameters with `value:` come from
+# SCHEMA.md#runtime_parameters.type ("static" enum). Triple-mustache
+# `{{{ADMIN_PASSWORD}}}` interpolation is the runtime-init template syntax
+# shown verbatim in examples/runtime_configs/full_example_aws_1nic.yaml.
+cat <<'EOF_RUNTIME_INIT_YAML' > /config/cloud/runtime-init-conf.yaml
+controls:
+  logLevel: info
+  logFilename: /var/log/cloud/bigIpRuntimeInit.log
+runtime_parameters:
+  - name: ADMIN_PASSWORD
+    type: static
+    value: '${admin_password}'
+  - name: HOST_NAME
+    type: static
+    value: '${hostname}'
+pre_onboard_enabled: []
+bigip_ready_enabled: []
+extension_packages:
+  install_operations:
+    # DO 1.47.0 RPM + SHA256 from
+    # https://github.com/F5Networks/f5-declarative-onboarding/releases/tag/v1.47.0
+    # extensionHash is verified by runtime-init before install (SCHEMA.md
+    # extension_packages.install_operations.extensionHash).
+    - extensionType: do
+      extensionVersion: 1.47.0
+      extensionHash: 2338ce270d5ee12405e59d4f712b09cd111b24b5f78aee41e90f8e61ee2a36e2
+extension_services:
+  service_operations:
+    # DO declaration. Shape mirrors
+    # examples/runtime_configs/snippets/extension_services_inline.yaml:
+    # User class with partitionAccess.all-partitions.role=admin,
+    # userType=regular, shell=bash. Targeting the existing "admin" user
+    # (rather than creating a new "quickstart" user as the snippet does)
+    # is documented at
+    # https://clouddocs.f5.com/products/extensions/f5-declarative-onboarding/latest/schema-reference.html#user
+    # `async: true` lets runtime-init poll the DO task to completion
+    # rather than blocking the iControl REST call (full_example_aws_1nic).
+    #
+    # /Common/My_System.hostname MUST be a fully qualified DNS name (i.e.
+    # contain at least one dot). A bare short name returns
+    # 422 / "01070903:3: Constraint 'hostname must be a fully qualified
+    # DNS name' failed for '/Common/system'" and DO rolls back the entire
+    # declaration — the admin User block under Common is part of the same
+    # Tenant transaction so its password and shell never get applied,
+    # which surfaces as "tcp/443 up briefly then dies, iControl REST
+    # never returns 200" in integration tests. The {{{HOST_NAME}}} value
+    # is constructed in terraform/modules/ve-instance/main.tf as
+    # $${var.name}.$${var.hostname_dns_suffix} for exactly this reason.
+    # Schema reference:
+    # https://clouddocs.f5.com/products/extensions/f5-declarative-onboarding/latest/schema-reference.html#system
+    - extensionType: do
+      type: inline
+      value:
+        schemaVersion: 1.0.0
+        class: Device
+        async: true
+        label: nexusf5 integration VE first-boot bootstrap
+        Common:
+          class: Tenant
+          My_System:
+            class: System
+            autoPhonehome: false
+            hostname: '{{{HOST_NAME}}}'
+          admin:
+            class: User
+            partitionAccess:
+              all-partitions:
+                role: admin
+            password: '{{{ADMIN_PASSWORD}}}'
+            shell: bash
+            userType: regular
+post_onboard_enabled: []
+EOF_RUNTIME_INIT_YAML
+
+chmod 0600 /config/cloud/runtime-init-conf.yaml
+
+# Installer URL pattern from
+# https://github.com/F5Networks/f5-bigip-runtime-init#downloading-runtime-init
+# Pinned to 2.0.3. SHA256 fetched from the release's .gz.run.sha256 asset.
+# Verified offline before this user_data was written; if F5 ever rotates
+# the artifact, the sha256sum -c step below fails closed.
+RUNTIME_INIT_VERSION="2.0.3-1"
+RUNTIME_INIT_URL="https://cdn.f5.com/product/cloudsolutions/f5-bigip-runtime-init/v2.0.3/dist/f5-bigip-runtime-init-2.0.3-1.gz.run"
+RUNTIME_INIT_SHA256="e38fabfee268d6b965a7c801ead7a5708e5766e349cfa6a19dd3add52018549a"
+
+curl -fsSL --retry 6 --retry-delay 10 \
+  -o /tmp/f5-bigip-runtime-init.gz.run \
+  "$${RUNTIME_INIT_URL}"
+
+echo "$${RUNTIME_INIT_SHA256}  /tmp/f5-bigip-runtime-init.gz.run" | sha256sum -c -
+
+# `--cloud aws` from the README install-arguments table. The `--` is the
+# self-extracting installer convention that separates host args from the
+# embedded payload's args.
+bash /tmp/f5-bigip-runtime-init.gz.run -- '--cloud aws'
+
+# `--config-file` is the documented invocation flag (README "Running
+# Runtime Init"). After this returns, the admin password and hostname
+# are set; the integration wrapper's iControl REST poll will succeed.
+f5-bigip-runtime-init --config-file /config/cloud/runtime-init-conf.yaml
+
+echo "[runtime-init-userdata] done $(date -u +%Y-%m-%dT%H:%M:%SZ)"

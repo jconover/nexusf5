@@ -99,6 +99,50 @@ class ChaosFlags:
     fail_next_as3: bool = False
 
 
+# F5 DO hostname constraint message — verbatim from a real BIG-IP 17.1.3.2
+# rejecting a non-FQDN hostname (captured during Phase 4 PR 2 iteration 3
+# integration logs). The leading "01070903:3:" code identifies the mcpd
+# rule that rejected the value. Tests assert the exact substring so a
+# future "tidy" of the message string fails loudly.
+DO_FQDN_CONSTRAINT_MESSAGE = (
+    "01070903:3: Constraint 'hostname must be a fully qualified DNS name' "
+    "failed for '/Common/system'"
+)
+
+
+def _validate_do_declaration(declaration: dict[str, Any]) -> str | None:
+    """Apply F5-side declaration validation that the real BIG-IP performs
+    before accepting a DO declaration. Returns None if valid, else an
+    error message in the F5 format used by the failing task's `message`
+    field.
+
+    Currently checks:
+      * /Common/<systemKey>.hostname must be FQDN-shaped (contain a dot).
+        Real F5 rejects with code 01070903:3 and rolls back the entire
+        declaration; the rollback is what bit Phase 4 PR 2's first three
+        iterations (admin User block was in the same Tenant transaction).
+
+    Add more F5-side constraint checks here as they bite us. The mock's
+    job here is "fail the same way real F5 fails" — not to enforce the
+    full DO schema, just the constraints whose absence has cost us a
+    debugging cycle.
+
+    The provider wraps user input in an envelope (top-level `class: DO`,
+    nested `declaration: {...}`); we walk both shapes.
+    """
+    inner = declaration.get("declaration") if isinstance(declaration, dict) else None
+    body = inner if isinstance(inner, dict) else declaration
+    common = body.get("Common") if isinstance(body, dict) else None
+    if not isinstance(common, dict):
+        return None
+    for value in common.values():
+        if isinstance(value, dict) and value.get("class") == "System":
+            hostname = value.get("hostname")
+            if isinstance(hostname, str) and "." not in hostname:
+                return DO_FQDN_CONSTRAINT_MESSAGE
+    return None
+
+
 @dataclass
 class DOTask:
     """Async task created by POST /mgmt/shared/declarative-onboarding.
@@ -117,6 +161,12 @@ class DOTask:
     status: str = "RUNNING"
     message: str = ""
     will_fail: bool = False
+    # Pre-set ERROR message that overrides the chaos default in advance().
+    # Populated by start_do_task when the declaration fails F5-side
+    # validation (e.g. /Common/system.hostname not an FQDN). Lets the mock
+    # surface the same constraint string a real BIG-IP returns instead of
+    # the generic chaos message.
+    failure_reason: str | None = None
 
 
 @dataclass
@@ -269,7 +319,14 @@ class DeviceState:
             if current >= do_task.completes_at:
                 if do_task.will_fail:
                     do_task.status = "ERROR"
-                    do_task.message = "DO declaration failed (chaos.fail_next_do)"
+                    # failure_reason carries a constraint-specific message
+                    # set by start_do_task (e.g. the FQDN constraint).
+                    # Without one, the failure was chaos-driven.
+                    do_task.message = (
+                        do_task.failure_reason
+                        if do_task.failure_reason is not None
+                        else "DO declaration failed (chaos.fail_next_do)"
+                    )
                 else:
                     do_task.status = "OK"
                     do_task.message = "success"
@@ -288,14 +345,27 @@ class DeviceState:
 
     def start_do_task(self, declaration: dict[str, Any]) -> DOTask:
         duration = do_task_seconds()
+        # F5-side validation that the real BIG-IP performs before
+        # accepting the declaration. Currently just the FQDN constraint
+        # on /Common/<systemKey>.hostname (error code 01070903:3) — the
+        # exact failure mode that broke Phase 4 PR 2 iterations 1-3 by
+        # rolling back the admin User block alongside the system block.
+        # Add more F5-side constraint checks here as they bite us; the
+        # contract is "mock fails the same way real F5 fails".
+        validation_error = _validate_do_declaration(declaration)
+        will_fail = self.chaos.fail_next_do or validation_error is not None
+        failure_reason = validation_error  # None unless validation rejected
         task = DOTask(
             id=str(uuid.uuid4()),
             started_at=now(),
             completes_at=now() + duration,
             declaration=declaration,
-            will_fail=self.chaos.fail_next_do,
+            will_fail=will_fail,
+            failure_reason=failure_reason,
         )
-        self.chaos.fail_next_do = False
+        # Chaos is one-shot; only consume it if it was the trigger.
+        if self.chaos.fail_next_do:
+            self.chaos.fail_next_do = False
         self.do_tasks[task.id] = task
         return task
 

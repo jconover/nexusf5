@@ -22,6 +22,16 @@ build/
 .terraform/
 .terraform.lock.hcl
 crash.log
+# Shared and integration envs carry operator-specific values (account ID,
+# email) in tfvars; lab env's tfvars is intentionally checked in (port
+# mappings, no secrets).
+terraform/environments/shared/terraform.tfvars
+terraform/environments/integration/terraform.tfvars
+
+# Integration wrapper output dir: rendered inventory, ssh key, admin
+# password, terraform plan files. All ephemeral, all per-run, none safe
+# to commit.
+build/
 
 # Ansible
 *.retry

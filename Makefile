@@ -1,4 +1,4 @@
-.PHONY: help install-deps lint lint-ci test test-unit integration mock-up mock-down mock-logs mock-build clean \
+.PHONY: help install-deps lint lint-ci test test-unit integration integration-debug mock-up mock-down mock-logs mock-build clean \
         terraform-fmt terraform-validate lab-up lab-down shared-up shared-down
 
 # Single source of truth for the uv version. The workflow reads the same
@@ -77,6 +77,14 @@ integration: ## AWS BIG-IP VE round-trip — provisions HA pair, runs preflight,
 	  exit 1; \
 	fi
 	python3 tools/integration_wrapper.py
+
+integration-debug: ## Same as integration but leaves resources up for SSH inspection (sets INTEGRATION_SKIP_DESTROY=1). Use for the inner loop of getting bootstrap working — destroy manually when done. NOT for CI.
+	@if [ ! -f terraform/environments/integration/terraform.tfvars ]; then \
+	  echo "==> terraform/environments/integration/terraform.tfvars missing — copy from terraform.tfvars.example and set aws_account_id."; \
+	  exit 1; \
+	fi
+	@echo "==> integration-debug: SKIP_DESTROY=1, manual cleanup required after run."
+	INTEGRATION_SKIP_DESTROY=1 python3 tools/integration_wrapper.py
 
 lab-up: mock-up ## Apply the lab terraform env against the running mock + proxy
 	cd terraform/environments/lab && terraform init -input=false && terraform apply -auto-approve

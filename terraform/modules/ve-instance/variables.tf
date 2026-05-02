@@ -47,12 +47,6 @@ variable "f5_throughput_tier" {
   default     = "1Gbps"
 }
 
-variable "admin_password" {
-  type        = string
-  description = "Initial admin password for the VE. Set via cloud-init user_data on first boot, then immediately replaced by the DO declaration's admin block. Required for the cloud-init bootstrap window before DO has applied. Sensitive — never log or surface in outputs."
-  sensitive   = true
-}
-
 variable "allowed_mgmt_cidrs" {
   type        = list(string)
   description = "CIDRs allowed to reach the VE management plane (TCP 443 + 22). Default is empty — must be set by the caller. Integration env passes the runner's egress IP; never use 0.0.0.0/0."
@@ -63,4 +57,22 @@ variable "tags" {
   type        = map(string)
   description = "Additional tags merged onto every resource the module creates. The integration env uses this to thread CreatedAt={timestamp} through every VE so the nuclear-option teardown can age-filter."
   default     = {}
+}
+
+variable "admin_password" {
+  type        = string
+  description = "Password to assign to the BIG-IP 'admin' user during first-boot bootstrap. Threaded into the f5-bigip-runtime-init YAML as a static runtime_parameter (ADMIN_PASSWORD) and rendered into the DO declaration via the {{{ADMIN_PASSWORD}}} mustache substitution. Caller is responsible for generating something unguessable (e.g. random_password); this module just transports it. Same trust boundary as the EC2 user_data — anyone with ec2:DescribeInstanceAttribute can read it, which is the existing posture for instance_id-as-password."
+  sensitive   = true
+}
+
+variable "hostname_dns_suffix" {
+  type        = string
+  description = "DNS suffix appended to var.name to form the BIG-IP system hostname (e.g. 'nexusf5.local' → 'bigip-aws-01.nexusf5.local'). F5 DO's /Common/system.hostname constraint requires an FQDN — bare short names get rejected with 422 / 01070903:3 'hostname must be a fully qualified DNS name', which rolls back the whole declaration including admin password and shell. The suffix does not need to resolve; it just needs to make the hostname dot-containing. Override per environment when there's a real domain."
+  default     = "nexusf5.local"
+}
+
+variable "mgmt_https_port" {
+  type        = number
+  description = "TCP port for BIG-IP iControl REST + mgmt GUI. Default 8443 matches BIG-IP 17.1.x's `sys httpd ssl-port` factory value (changed from 443 in older releases to free port 443 for data-plane VIPs in production deployments). The SG ingress rule, the wrapper's readiness probe, and the rendered ansible inventory's f5_api_base_url all read from this single variable so a future TMOS bump that shifts the default again is one edit, not five. F5 ref: BIG-IP 17.1 sys httpd manual / K-article on default mgmt ports."
+  default     = 8443
 }

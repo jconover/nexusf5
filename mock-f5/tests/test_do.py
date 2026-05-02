@@ -72,6 +72,79 @@ def test_do_failure_path(client: TestClient, monkeypatch: pytest.MonkeyPatch) ->
     assert read.status_code == 204
 
 
+def test_do_rejects_non_fqdn_hostname(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression: a /Common/<key>.hostname that is not FQDN-shaped (no dot)
+    must fail the task with F5's mcpd constraint message. Real BIG-IP
+    17.1.3.2 returned 422 + "01070903:3: Constraint 'hostname must be a
+    fully qualified DNS name' failed for '/Common/system'" during Phase 4
+    PR 2 iteration 3 — see runbooks/07-integration-diagnostics.md.
+
+    Mock previously accepted what real F5 rejected, which masked the
+    iteration 1 and 2 failures as something else entirely. Same
+    faithfulness discipline as Phase 4 PR 1's wire-contract regressions.
+    """
+    monkeypatch.setenv("MOCK_DO_TASK_SECONDS", "0")
+    bad_decl = {
+        "schemaVersion": "1.40.0",
+        "class": "DO",
+        "declaration": {
+            "schemaVersion": "1.40.0",
+            "class": "Device",
+            "Common": {
+                "class": "Tenant",
+                "myHostname": {
+                    "class": "System",
+                    "hostname": "bigip-lab-01",  # no dot — rejected by real F5
+                },
+            },
+        },
+    }
+    r = client.post(DO_BASE, json=bad_decl)
+    assert r.status_code == 202
+    task_id = r.json()["id"]
+
+    poll = client.get(f"{DO_BASE}/task/{task_id}")
+    # ERROR is carried on a 202 per provider contract (same shape as
+    # test_do_failure_path).
+    assert poll.status_code == 202
+    body = poll.json()
+    assert body["result"]["status"] == "ERROR"
+    msg = body["result"]["message"]
+    assert "fully qualified DNS name" in msg
+    assert "01070903:3" in msg
+    # Failed task does NOT become the read-endpoint declaration.
+    assert client.get(DO_BASE).status_code == 204
+
+
+def test_do_accepts_fqdn_hostname(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Counterpart to test_do_rejects_non_fqdn_hostname: a hostname with
+    a dot is accepted. Confirms the validator's predicate is "contains a
+    dot" rather than something stricter that would also reject the form
+    Phase 4 PR 2 actually uses (`bigip-aws-01.nexusf5.local`)."""
+    monkeypatch.setenv("MOCK_DO_TASK_SECONDS", "0")
+    good_decl = {
+        "schemaVersion": "1.40.0",
+        "class": "DO",
+        "declaration": {
+            "schemaVersion": "1.40.0",
+            "class": "Device",
+            "Common": {
+                "class": "Tenant",
+                "myHostname": {
+                    "class": "System",
+                    "hostname": "bigip-lab-01.nexusf5.local",
+                },
+            },
+        },
+    }
+    r = client.post(DO_BASE, json=good_decl)
+    assert r.status_code == 202
+    task_id = r.json()["id"]
+    poll = client.get(f"{DO_BASE}/task/{task_id}")
+    assert poll.status_code == 200
+    assert poll.json()["result"]["status"] == "OK"
+
+
 def test_do_failure_chaos_is_one_shot(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MOCK_DO_TASK_SECONDS", "0")
     client.post("/_chaos/bigip-lab-01/fail-next-do")

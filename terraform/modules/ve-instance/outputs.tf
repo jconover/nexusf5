@@ -32,3 +32,8 @@ output "security_group_id" {
   value       = aws_security_group.ve.id
   description = "SG ID. Mostly informational; consumers usually don't need to reference it."
 }
+
+output "mgmt_https_port" {
+  value       = var.mgmt_https_port
+  description = "TCP port iControl REST + mgmt GUI listen on (BIG-IP 17.1.x default 8443). Wrapper and ansible inventory consume this so the port lives in exactly one place."
+}

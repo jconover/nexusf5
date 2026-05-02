@@ -11,13 +11,14 @@ module "bigip_aws_01" {
   vpc_id    = aws_vpc.integration.id
   subnet_id = aws_subnet.public.id
 
-  ssh_key_name   = aws_key_pair.integration.key_name
-  admin_password = random_password.admin.result
+  ssh_key_name = aws_key_pair.integration.key_name
 
   instance_type      = var.ve_instance_type
   f5_version_pattern = var.f5_version_pattern
   f5_license_tier    = var.f5_license_tier
   f5_throughput_tier = var.f5_throughput_tier
+
+  admin_password = random_password.admin.result
 
   allowed_mgmt_cidrs = local.effective_mgmt_cidrs
 
@@ -31,13 +32,14 @@ module "bigip_aws_02" {
   vpc_id    = aws_vpc.integration.id
   subnet_id = aws_subnet.public.id
 
-  ssh_key_name   = aws_key_pair.integration.key_name
-  admin_password = random_password.admin.result
+  ssh_key_name = aws_key_pair.integration.key_name
 
   instance_type      = var.ve_instance_type
   f5_version_pattern = var.f5_version_pattern
   f5_license_tier    = var.f5_license_tier
   f5_throughput_tier = var.f5_throughput_tier
+
+  admin_password = random_password.admin.result
 
   allowed_mgmt_cidrs = local.effective_mgmt_cidrs
 

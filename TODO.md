@@ -149,6 +149,7 @@ Trigger `upgrade-canary.yml` manually → 5 mock devices upgrade serially → ar
   - [ ] CI status badges for all four workflows (lint, ingest, python, ansible)
   - [ ] "What this demonstrates" section mapping capabilities (orchestration at scale, declarative config, automated rollback, modernization path) to concrete files in the repo
 - [ ] Resolve pre-existing yamllint warning on `ansible/roles/f5_backup/tasks/main.yml:10` (line >140 chars; non-fatal, predates Phase 4 PR 1)
+- [ ] Align mock iControl REST listen port with real F5 17.1.x default (8443 instead of 8080). Phase 4 PR 2 follow-up: real BIG-IP listens on 8443; mock listens on 8080 (HTTP, no TLS — different shape). Mismatch is currently fine because the lab terraform env routes via the proxy adapter using path-prefix, but a future test that exercises the integration wrapper against the mock would surface a "works against mock, fails against real F5" gap. Touches `mock-f5/Dockerfile` (EXPOSE + uvicorn --port), `mock-f5/docker-compose.yml` port mapping, `proxy/` adapter targets, and any healthcheck URLs.
 - [ ] Final portfolio pass: every `TODO` comment in code addressed or documented, every role has a README, every workflow has a comment block explaining what triggers it
 
 ### Done when

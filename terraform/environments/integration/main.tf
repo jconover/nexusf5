@@ -111,13 +111,18 @@ resource "aws_key_pair" "integration" {
   tags = merge(local.per_run_tags, { Name = "nexusf5-integration-${local.run_id}-key" })
 }
 
-# Generate a random admin password per run. Surfaces in terraform state
-# (gitignored, ephemeral) and as a sensitive output the wrapper passes to
-# ansible via the F5_API_PASSWORD env var. Never logged, never committed.
+# Per-run admin password, threaded through the ve-instance module's
+# admin_password variable into the runtime-init YAML as a static
+# runtime_parameter and rendered into the DO User declaration on first
+# boot. Both VEs share one password (single resource, two module
+# instances) — fine for an ephemeral integration env.
+#
+# Alphanumeric only (special = false → [A-Za-z0-9]) at 24 chars
+# (~143 bits) sidesteps escape rules across all five layers between
+# terraform and tmsh: templatefile, single-quoted YAML, runtime-init
+# triple-mustache, DO JSON, iControl REST. Entropy is more than enough
+# for a 30-45 minute integration credential.
 resource "random_password" "admin" {
   length  = 24
-  special = true
-  # F5 password complexity: at least one each of upper, lower, digit, and
-  # special; the 'special' overrides keep tmsh-unfriendly characters out.
-  override_special = "!@#$%^*-_+=:?"
+  special = false
 }

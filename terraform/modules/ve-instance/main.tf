@@ -41,19 +41,29 @@ resource "aws_security_group" "ve" {
   tags = merge(var.tags, { Name = "${var.name}-sg" })
 }
 
-# 443/tcp = iControl REST + GUI. The Ansible roles and Terraform F5 provider
-# both target this port. Limited to allowed_mgmt_cidrs so a typo'd 0.0.0.0/0
-# in the integration env can't expose a default-credential VE to the
-# internet during the bootstrap window.
+# iControl REST + mgmt GUI port. BIG-IP 17.1.x defaults `sys httpd ssl-port`
+# to 8443 (was 443 in earlier releases) to avoid colliding with data-plane
+# VIPs that bind 443 in real deployments. We follow F5's documented
+# direction-of-travel rather than overriding it back to 443 — overriding
+# would compound maintenance debt as TMOS defaults shift across versions.
+# Centralized in var.mgmt_https_port so a future TMOS bump that flips the
+# default is one edit. The Ansible F5 collections and Terraform F5 provider
+# accept arbitrary ports; both inventory's f5_api_base_url and the
+# integration wrapper's probe URL read from the module's matching output.
+# Limited to allowed_mgmt_cidrs so a typo'd 0.0.0.0/0 can't expose a
+# bootstrap-window VE to the internet.
+# Refs:
+#   - BIG-IP 17.1 manual `tmsh list sys httpd` (default ssl-port = 8443)
+#   - F5 K-article "Default ports for BIG-IP management traffic"
 resource "aws_vpc_security_group_ingress_rule" "mgmt_https" {
   for_each = toset(var.allowed_mgmt_cidrs)
 
   security_group_id = aws_security_group.ve.id
   cidr_ipv4         = each.value
-  from_port         = 443
-  to_port           = 443
+  from_port         = var.mgmt_https_port
+  to_port           = var.mgmt_https_port
   ip_protocol       = "tcp"
-  description       = "iControl REST + mgmt GUI from ${each.value}"
+  description       = "iControl REST + mgmt GUI (tcp/${var.mgmt_https_port}) from ${each.value}"
 
   tags = merge(var.tags, { Name = "${var.name}-mgmt-https-${each.value}" })
 }
@@ -96,27 +106,20 @@ resource "aws_eip_association" "ve" {
   allocation_id = aws_eip.ve.id
 }
 
-# Cloud-init runs at first boot. F5 BIG-IP VE recognises a tmsh-style script
-# and runs it once the management plane is ready. Sets the admin password to
-# the variable value so the integration wrapper has a known credential before
-# the DO declaration replaces it. gui-setup disabled skips the post-boot
-# wizard that would otherwise block iControl REST until a human clicked
-# through. Save persists the change across reboots.
+# First-boot bootstrap via f5-bigip-runtime-init v2.0.3
+# (https://github.com/F5Networks/f5-bigip-runtime-init).
 #
-# Caveat: user_data is visible to anyone with ec2:DescribeInstanceAttribute
-# in this account. The integration wrapper randomises admin_password per run
-# and the VE is destroyed within 45 minutes, so the exposure window is
-# bounded — but the password is not a long-lived secret and must not be
-# reused outside the run that generated it.
-locals {
-  user_data = <<-EOT
-    #!/usr/bin/env bash
-    set -euo pipefail
-    tmsh modify auth user admin password '${var.admin_password}'
-    tmsh modify sys global-settings gui-setup disabled
-    tmsh save sys config
-  EOT
-}
+# Runtime-init's `bigip_ready_enabled` phase blocks until mcpd is up
+# before any iControl REST work runs — that ordering is what this
+# bootstrap requires. The DO declaration in `extension_services` then
+# sets the admin user's password and the hostname.
+#
+# Don't replace this with raw tmsh user_data (races mcpd) or with no
+# user_data (leaves httpd crashed after the first-boot reboot, with no
+# supervisor restart). Both have been tried; runtime-init is the
+# documented path. Installer URL, SHAs, schema citations, and DO User
+# class shape live alongside their literal values in
+# runtime-init-userdata.sh.tftpl.
 
 resource "aws_instance" "ve" {
   ami           = data.aws_ami.f5_ve.id
@@ -126,11 +129,27 @@ resource "aws_instance" "ve" {
 
   vpc_security_group_ids = [aws_security_group.ve.id]
 
+  # user_data is processed by BIG-IP's first-boot cloud-init. Templatefile
+  # renders the bash wrapper + embedded runtime-init YAML; the password is
+  # baked in at apply time as a static runtime_parameter (ADMIN_PASSWORD).
+  # A change to admin_password forces replacement (user_data_replace_on_change)
+  # because changing the password on a running VE via in-place user_data
+  # update would leave the live admin user out of sync with terraform state
+  # — replacement is the correct semantics for an ephemeral integration VE.
+  user_data = templatefile("${path.module}/runtime-init-userdata.sh.tftpl", {
+    admin_password = var.admin_password
+    # FQDN required by F5 DO's /Common/system.hostname constraint. A bare
+    # short name like 'bigip-aws-01' returns 422 / 01070903:3 "hostname
+    # must be a fully qualified DNS name" and rolls back the entire
+    # declaration (no admin password, no shell change). var.name stays as
+    # the short form for EC2 tags and ansible inventory; only the BIG-IP
+    # system hostname is FQDN-shaped.
+    hostname = "${var.name}.${var.hostname_dns_suffix}"
+  })
+  user_data_replace_on_change = true
+
   # Public IP via EIP, not auto-assigned, so the address survives stop/start.
   associate_public_ip_address = false
-
-  user_data                   = local.user_data
-  user_data_replace_on_change = true
 
   # F5 BIG-IP VE images ship with an 80GB root volume requirement. Going
   # smaller fails first-boot disk checks; going larger is wasted spend. gp3

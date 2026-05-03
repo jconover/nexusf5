@@ -1,0 +1,25 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+#
+# Most knobs use sensible defaults (Good 1Gbps PAYG, 17.1.x AMI, m5.large,
+# 10.98.0.0/16 VPC, 30-min drain window). Override only when you know why.
+
+aws_account_id = "123456789012"
+
+# Optional: pin specific F5 AMI versions for reproducibility.
+# f5_version_pattern = "F5 BIGIP-17.1.1.1*"
+
+# Optional: lock mgmt ingress to a known fixed CIDR instead of letting the
+# env detect the runner's egress IP. Use this when your runner sits behind
+# a NAT and the egress IP isn't stable. Never set to 0.0.0.0/0.
+# explicit_mgmt_cidrs = ["203.0.113.42/32"]
+
+# Optional: shorten the drain window for tests. The integration wrapper
+# overrides this via TF_VAR_drain_window_seconds=30 by default so the
+# 45-minute round-trip stays inside its wall clock; production-shape
+# operators using this root directly should keep the 1800-s default.
+# drain_window_seconds = 30
+
+# Optional: the FQDN a real DNS-cutover would flip. Echoed into the
+# null_resource stub's plan output and into the cutover playbook log line.
+# Remains '.invalid' by default to make accidental real-DNS misuse loud.
+# dns_cutover_record_name = "vip.example.invalid"

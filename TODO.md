@@ -104,15 +104,17 @@ Trigger `upgrade-canary.yml` manually → 5 mock devices upgrade serially → ar
 - [x] `terraform/modules/as3-declaration/` — same pattern for AS3 via `bigip_as3` resource (PR 1)
 - [x] `terraform/environments/lab/` — points at mock server (via the nginx adapter sidecar in `mock-f5/proxy/`, since the F5 provider has no path-prefix support) with 5 canary devices wired up (PR 1)
 - [x] Real DO/AS3 drift check in `f5_postcheck` role: runs `terraform plan -detailed-exitcode`, fails if exit code indicates drift (PR 1)
-- [ ] `terraform/modules/ve-instance/` — AWS BIG-IP VE provisioning (AMI lookup, VPC, subnets, security groups, IAM) (PR 2)
-- [ ] `terraform/immutable-track/` — end-to-end immutable example: (PR 2)
-  - [ ] Provisions a new VE at target version
-  - [ ] Applies same DO/AS3 declarations (proves portability)
-  - [ ] Outputs new VE endpoint for synthetic validation
-- [ ] `ansible/playbooks/immutable-cutover.yml` — synthetic validation + DNS cutover stub + old-VE-drain (PR 2)
-- [ ] Integration test: `make integration` spins up a real AWS VE pair (tagged `purpose=nexusf5-test`, `auto-destroy=true`), runs preflight + one-shot upgrade round-trip, tears down. Runs in GitHub Actions on `workflow_dispatch` only — not on PRs (cost control). (PR 2)
-- [ ] **Pre-merge for PR 2:** drop `refs/heads/phase-4-aws-ve` from `trusted_branch_refs` in `terraform/environments/shared/variables.tf`, re-apply, verify trust policy via `test-aws-auth.yml` from `main`. A feature branch in the trust policy is permanent attack surface — branch can be re-created post-merge by anyone with write access and the policy still accepts it.
-- [ ] ADR: `docs/decisions/003-hybrid-vs-immutable.md` explaining when each applies (PR 3 — renumbered from `001-hybrid-vs-immutable.md` because `001-mock-topology.md` already exists)
+- [x] `terraform/modules/ve-instance/` — AWS BIG-IP VE provisioning (AMI lookup, VPC, subnets, security groups, IAM) (PR 2)
+- [x] `terraform/immutable-track/` — end-to-end immutable example: (PR 3 — moved from PR 2 because PR 2's iteration budget was consumed by getting the F5 runtime-init bootstrap right against real BIG-IP VEs; immutable-track was deferred to a smaller, focused PR)
+  - [x] Provisions a new VE at target version (single VE per ADR 003 — modernization demonstration, not production cutover)
+  - [x] Applies same DO/AS3 declarations via the `do-declaration` and `as3-declaration` modules from PR 1 unchanged (proves portability — load-bearing claim of the immutable track)
+  - [x] Outputs new VE endpoint for synthetic validation
+- [x] `ansible/playbooks/immutable-cutover.yml` — synthetic validation + DO/AS3 drift gate + DNS cutover stub + drain-window pause + drain-complete signal (PR 3 — moved from PR 2; reuses `f5_postcheck` role with `version_check_enabled=false` for first-apply validation)
+- [x] Integration test: `make integration` spins up a real AWS VE pair (tagged `purpose=nexusf5-test`, `auto-destroy=true`), runs preflight + one-shot upgrade round-trip, tears down. Runs in GitHub Actions on `workflow_dispatch` only — not on PRs (cost control). (PR 2)
+- [x] `make integration-immutable` — same wrapper, INTEGRATION_TRACK=immutable, exercises the immutable-track round-trip (provision → apply DO/AS3 → cutover → drain → destroy). 45-min wall clock, $5–10 spend ceiling, no stranded resources. (PR 3)
+- [ ] **Pre-merge for PR 2 — NOT DONE before PR 2 merged; flagged by PR 3:** drop `refs/heads/phase-4-aws-ve` from `trusted_branch_refs` in `terraform/environments/shared/variables.tf`, re-apply (effective only after `cd terraform/environments/shared && terraform apply`), verify trust policy via `test-aws-auth.yml` from `main`. A feature branch in the trust policy is permanent attack surface — branch can be re-created post-merge by anyone with write access and the policy still accepts it. PR 3 deliberately did NOT touch this — re-applying the shared env is cross-PR scope and requires the AWS-credentialed operator to drive. Resolve before any further phase-4 branches merge.
+- [x] ADR: `docs/decisions/003-hybrid-vs-immutable.md` explaining when each applies (PR 3 — renumbered from `001-hybrid-vs-immutable.md` because `001-mock-topology.md` already exists)
+- [x] ADR: `docs/decisions/004-cutover-safety.md` on drain windows, rollback triggers, and why DNS-based cutover (PR 3)
 - [x] ADR: `docs/decisions/002-terraform-scope.md` on why Terraform owns config but not upgrade flow (PR 1)
 
 ### Done when
@@ -135,7 +137,7 @@ Trigger `upgrade-canary.yml` manually → 5 mock devices upgrade serially → ar
   - [ ] Drain sessions on BIG-IP VIP via iControl REST
   - [ ] DNS cutover stub (comment where real provider integration would plug in)
   - [ ] BIG-IP VIP remains available as fallback for defined window
-- [ ] ADR: `docs/decisions/003-when-to-modernize-to-nginx.md` — decision framework for which workloads are good candidates
+- [ ] ADR: `docs/decisions/005-when-to-modernize-to-nginx.md` — decision framework for which workloads are good candidates (renumbered from `003-...` because Phase 4 PR 3 took 003 + 004 for hybrid-vs-immutable and cutover-safety)
 - [ ] `observability/prometheus/prometheus.yml` — scrape config for mock `/metrics` and Pushgateway
 - [ ] `observability/grafana/dashboards/fleet-upgrade.json` — real dashboard: stacked bar by wave/status, per-device timing histogram, failure heatmap, rollback timeline
 - [ ] `docker-compose.observability.yml` — full stack up: mock(s) + Prometheus + Pushgateway + Grafana with dashboard pre-loaded

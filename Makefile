@@ -1,4 +1,4 @@
-.PHONY: help install-deps lint lint-ci test test-unit integration integration-debug mock-up mock-down mock-logs mock-build clean \
+.PHONY: help install-deps lint lint-ci test test-unit integration integration-debug integration-immutable mock-up mock-down mock-logs mock-build clean \
         terraform-fmt terraform-validate lab-up lab-down shared-up shared-down
 
 # Single source of truth for the uv version. The workflow reads the same
@@ -30,7 +30,7 @@ terraform-fmt: ## Check terraform formatting (fails if any file would change)
 	terraform fmt -recursive -check terraform/
 
 terraform-validate: ## Validate every terraform module + environment
-	@for d in terraform/modules/do-declaration terraform/modules/as3-declaration terraform/modules/ve-instance terraform/environments/lab terraform/environments/shared terraform/environments/integration; do \
+	@for d in terraform/modules/do-declaration terraform/modules/as3-declaration terraform/modules/ve-instance terraform/environments/lab terraform/environments/shared terraform/environments/integration terraform/immutable-track; do \
 	  echo "==> terraform validate $$d"; \
 	  (cd $$d && terraform init -backend=false -upgrade=false -input=false >/dev/null && terraform validate) || exit 1; \
 	done
@@ -85,6 +85,13 @@ integration-debug: ## Same as integration but leaves resources up for SSH inspec
 	fi
 	@echo "==> integration-debug: SKIP_DESTROY=1, manual cleanup required after run."
 	INTEGRATION_SKIP_DESTROY=1 python3 tools/integration_wrapper.py
+
+integration-immutable: ## AWS BIG-IP VE round-trip via the immutable track — provisions one new VE, applies DO/AS3 via the same modules as the lab env, runs the cutover playbook, tears down. (45-min hard timeout)
+	@if [ ! -f terraform/immutable-track/terraform.tfvars ]; then \
+	  echo "==> terraform/immutable-track/terraform.tfvars missing — copy from terraform.tfvars.example and set aws_account_id."; \
+	  exit 1; \
+	fi
+	INTEGRATION_TRACK=immutable python3 tools/integration_wrapper.py
 
 lab-up: mock-up ## Apply the lab terraform env against the running mock + proxy
 	cd terraform/environments/lab && terraform init -input=false && terraform apply -auto-approve

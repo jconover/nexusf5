@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Integration test wrapper for `make integration`.
+"""Integration test wrapper for `make integration` and `make integration-immutable`.
 
 Hard 45-minute wall-clock timeout. Teardown runs unconditionally — success,
 failure, timeout, SIGINT — via a try/finally that calls `terraform destroy`
@@ -9,30 +9,43 @@ under signal interactions (especially SIGALRM compounding with subprocess
 waits) is fragile, and a wedged integration run leaving live VEs costs real
 money.
 
-Phases (each one's failure short-circuits to teardown):
-  1. terraform init + apply  (creates the VE pair, EIPs, SG, key pair)
-  2. wait for iControl REST  (BIG-IP cloud-init runs f5-bigip-runtime-init,
-                              which waits for mcpd then posts a DO
-                              declaration setting admin password +
-                              hostname; budget 25 min per VE)
-  3. ansible preflight       (per-device version + HA + sync checks)
-  4. diagnostic capture      (only on failure; SSH-fetches runtime-init
-                              and iControl REST logs from both VEs to
-                              build/integration/runs/{run_id}/{host}/.
-                              Isolated try/except — its own failure
-                              must not block destroy.)
-  5. terraform destroy       (always)
-  6. nuclear teardown        (only if step 5 returned non-zero)
+Two tracks, selected via INTEGRATION_TRACK:
 
-Configuration via environment variables (all optional, defaults for laptop runs):
-  AWS_PROFILE       default "outlook"
-  AWS_REGION        default "us-east-2"
+  * "hybrid" (default) — terraform/environments/integration with HA pair.
+    Phases:
+      1. terraform init + apply  (creates VE pair, EIPs, SG, key pair)
+      2. wait for iControl REST  (per VE, runtime-init bootstrap)
+      3. ansible preflight       (per-device version + HA + sync checks)
+      4. diagnostic capture      (only on failure)
+      5. terraform destroy       (always)
+      6. nuclear teardown        (only if step 5 returned non-zero)
+
+  * "immutable" — terraform/immutable-track with one new VE + DO/AS3.
+    Phases:
+      1. terraform init + apply (phase 1, -target=module.bigip_aws_new
+                                 + the inventory + ssh key resources)
+      2. wait for iControl REST (single VE, runtime-init bootstrap)
+      3. terraform apply        (phase 2 — adds bigip_do, bigip_as3,
+                                 dns_cutover_stub via the bigip provider)
+      4. ansible immutable-cutover playbook (synthetic validation +
+                                 drift gate + DNS stub + drain window)
+      5. diagnostic capture      (only on failure)
+      6. terraform destroy       (always)
+      7. nuclear teardown        (only if step 6 returned non-zero)
+
+Configuration via environment variables (all optional):
+  INTEGRATION_TRACK             "hybrid" (default) or "immutable"
+  AWS_PROFILE                   default "outlook"
+  AWS_REGION                    default "us-east-2"
   INTEGRATION_TIMEOUT_SECONDS   default 2700 (45 minutes)
-  INTEGRATION_VE_READY_TIMEOUT  default 900  (15 minutes per VE)
-  INTEGRATION_SKIP_DESTROY      set to "1" to leave the VE pair running for
-                                 manual debugging. The nuclear teardown
-                                 still runs at process exit; this only
-                                 skips the planned destroy. Use sparingly.
+  INTEGRATION_VE_READY_TIMEOUT  default 1500 (25 minutes per VE)
+  INTEGRATION_SKIP_DESTROY      "1" leaves resources up for manual debugging
+  INTEGRATION_DRAIN_WINDOW_SECONDS  default 30 — overrides the immutable-track
+                                terraform var.drain_window_seconds (default
+                                1800) so the round-trip stays inside the
+                                wall clock. Set to 0 to skip the drain pause
+                                entirely; set to 1800 to match the production
+                                default in a debug session.
 """
 
 from __future__ import annotations
@@ -54,15 +67,50 @@ from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-TERRAFORM_ENV = REPO_ROOT / "terraform" / "environments" / "integration"
 ANSIBLE_DIR = REPO_ROOT / "ansible"
-BUILD_DIR = REPO_ROOT / "build" / "integration"
+
+# Track-aware paths. The hybrid track owns the integration env (HA-pair
+# shape); the immutable track owns the immutable-track root config (one
+# new VE + DO/AS3). Both share this wrapper's lifecycle, signal handling,
+# and teardown — the deltas are which terraform root, which build dir
+# the inventory + ssh key get rendered into, and which ansible playbook
+# runs after the VE is ready.
+TRACK = os.environ.get("INTEGRATION_TRACK", "hybrid")
+if TRACK == "hybrid":
+    TERRAFORM_ENV = REPO_ROOT / "terraform" / "environments" / "integration"
+    BUILD_DIR = REPO_ROOT / "build" / "integration"
+elif TRACK == "immutable":
+    TERRAFORM_ENV = REPO_ROOT / "terraform" / "immutable-track"
+    BUILD_DIR = REPO_ROOT / "build" / "integration-immutable"
+else:
+    raise SystemExit(
+        f"INTEGRATION_TRACK={TRACK!r} not recognized — expected 'hybrid' or 'immutable'."
+    )
 
 AWS_PROFILE = os.environ.get("AWS_PROFILE", "outlook")
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-2")
 TIMEOUT_SECONDS = int(os.environ.get("INTEGRATION_TIMEOUT_SECONDS", str(45 * 60)))
 VE_READY_TIMEOUT = int(os.environ.get("INTEGRATION_VE_READY_TIMEOUT", str(25 * 60)))
 SKIP_DESTROY = os.environ.get("INTEGRATION_SKIP_DESTROY") == "1"
+
+# Drain window override for the immutable track. Default 30 s keeps the
+# 45-minute wall clock honest; production-shape callers honour the
+# terraform variable's 1800 s default by setting this to 1800.
+DRAIN_WINDOW_SECONDS = int(os.environ.get("INTEGRATION_DRAIN_WINDOW_SECONDS", "30"))
+
+# -target list for the immutable track's phase-1 apply. The bigip
+# provider needs the new VE's iControl REST endpoint to be answering
+# before bigip_do and bigip_as3 can apply, so phase 1 stops at the
+# infrastructure resources (VE module + the rendered inventory/ssh key
+# the wrapper needs to talk to the VE). null_resource.dns_cutover_stub
+# is excluded too so its provisioner does not fire before the cutover
+# playbook reaches its DNS-stub task. -target on a module address pulls
+# the module's full dependency graph (VPC/subnet/IGW/SG/EIP/etc.).
+IMMUTABLE_PHASE_1_TARGETS = [
+    "-target=module.bigip_aws_new",
+    "-target=local_sensitive_file.inventory",
+    "-target=local_sensitive_file.ssh_private_key",
+]
 
 
 class IntegrationTimeout(Exception):
@@ -104,12 +152,26 @@ def make_run_id() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dt%H%M%Sz")
 
 
-def terraform_apply(run_id: str) -> None:
+def terraform_apply(run_id: str, targets: list[str] | None = None,
+                    init: bool = True) -> None:
+    """Run `terraform apply` on the active track's root.
+
+    `targets` is the optional list of -target=... flags for partial-graph
+    applies. The immutable track uses this for phase 1 (VE + inventory +
+    ssh key only) so the bigip provider does not try to authenticate
+    before the VE answers iControl REST. `init=False` skips re-running
+    `terraform init` for repeat applies in the same run.
+    """
     env = aws_env()
     env["TF_VAR_run_id"] = run_id
-    run(["terraform", "init", "-input=false"], cwd=TERRAFORM_ENV, env=env)
-    run(["terraform", "apply", "-auto-approve", "-input=false", "-no-color"],
-        cwd=TERRAFORM_ENV, env=env)
+    if TRACK == "immutable":
+        env["TF_VAR_drain_window_seconds"] = str(DRAIN_WINDOW_SECONDS)
+    if init:
+        run(["terraform", "init", "-input=false"], cwd=TERRAFORM_ENV, env=env)
+    cmd = ["terraform", "apply", "-auto-approve", "-input=false", "-no-color"]
+    if targets:
+        cmd.extend(targets)
+    run(cmd, cwd=TERRAFORM_ENV, env=env)
 
 
 def terraform_outputs() -> dict[str, Any]:
@@ -324,6 +386,39 @@ def run_preflight() -> None:
     )
 
 
+def run_immutable_cutover() -> None:
+    """Drive the immutable-track cutover playbook.
+
+    Synthetic validation (curl /mgmt/tm/sys/version) → drift gate
+    (terraform plan -detailed-exitcode in postcheck role,
+    version_check_enabled=false) → DNS cutover stub → drain window pause →
+    drain-complete signal. The drain window honours
+    INTEGRATION_DRAIN_WINDOW_SECONDS (default 30 s for tests; production-
+    shape callers override to 1800 s).
+
+    The drift gate runs `terraform plan` against the immutable-track root
+    while the wrapper still owns the state. That's intentional — proving
+    the apply succeeded by replaying the same `plan` the upgrade flow uses
+    for drift detection is the load-bearing claim. State path is the
+    inventory's f5_postcheck_terraform_env_path, set by terraform/
+    immutable-track/inventory.tf to abspath(path.module).
+    """
+    env = aws_env()
+    env["ANSIBLE_LOCALHOST_WARNING"] = "False"
+    env["ANSIBLE_INTERPRETER_PYTHON"] = "auto_silent"
+    inventory = BUILD_DIR / "inventory.yml"
+    run(
+        [
+            "ansible-playbook",
+            "-i", str(inventory),
+            "playbooks/immutable-cutover.yml",
+            "--limit", "immutable_new",
+        ],
+        cwd=ANSIBLE_DIR,
+        env=env,
+    )
+
+
 def terraform_destroy() -> bool:
     """Run `terraform destroy`. Caller (the finally-block in main) is
     responsible for deciding whether to invoke this — when SKIP_DESTROY
@@ -529,8 +624,11 @@ def install_alarm() -> None:
 
 def main() -> int:
     run_id = make_run_id()
-    log(f"=== nexusf5 integration run {run_id} ===")
+    log(f"=== nexusf5 integration run {run_id} (track={TRACK}) ===")
     log(f"timeout {TIMEOUT_SECONDS}s, profile={AWS_PROFILE}, region={AWS_REGION}")
+    if TRACK == "immutable":
+        log(f"immutable-track drain window {DRAIN_WINDOW_SECONDS}s "
+            f"(terraform var.drain_window_seconds override)")
 
     install_alarm()
 
@@ -542,11 +640,20 @@ def main() -> int:
 
     # Hoisted: the early-diagnostic-fetch path needs the run dir before
     # wait_for_all_ves runs, and the late-fetch path uses the same dir.
-    run_dir = REPO_ROOT / "build" / "integration" / "runs" / run_id
+    run_dir = BUILD_DIR / "runs" / run_id
     ssh_key = BUILD_DIR / "ssh_key"
 
     try:
-        terraform_apply(run_id)
+        if TRACK == "immutable":
+            # Phase 1: VE infra + inventory + ssh key. Stops short of the
+            # bigip provider so DO/AS3 don't try to apply against an
+            # unbootstrapped VE. See declarations.tf header for the
+            # rationale.
+            log("=== terraform apply (phase 1: VE + inventory) ===")
+            terraform_apply(run_id, targets=IMMUTABLE_PHASE_1_TARGETS)
+        else:
+            terraform_apply(run_id)
+
         outputs = terraform_outputs()
         ve_endpoints = outputs["ve_endpoints"]["value"]
         admin_password = terraform_admin_password()
@@ -561,7 +668,16 @@ def main() -> int:
             ssh_key=ssh_key,
             early_fetch_dir=run_dir / "early",
         )
-        run_preflight()
+
+        if TRACK == "immutable":
+            # Phase 2: full apply now that the VE answers iControl REST.
+            # The bigip provider authenticates, posts the DO + AS3
+            # declarations, and the dns_cutover_stub null_resource fires.
+            log("=== terraform apply (phase 2: DO + AS3 + cutover stub) ===")
+            terraform_apply(run_id, init=False)
+            run_immutable_cutover()
+        else:
+            run_preflight()
 
     except IntegrationTimeout as e:
         failed = True

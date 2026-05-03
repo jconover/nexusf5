@@ -1,0 +1,126 @@
+---
+# NexusF5 immutable-track cutover playbook.
+#
+# Runs after `terraform apply` (phase 2) on `terraform/immutable-track`
+# has applied DO + AS3 to the freshly-provisioned VE. The playbook is the
+# orchestration layer for the cutover *shape* — synthetic validation,
+# DNS-cutover stub, drain window pause, drain-complete signal — without
+# touching real DNS or assuming an old VE exists in this demonstration.
+#
+# Required inventory facts (rendered by terraform/immutable-track/inventory.tf):
+#   ansible_host                          mgmt EIP of the new VE
+#   f5_api_base_url                       https://<eip>:8443
+#   f5_api_user, f5_api_password          admin + per-run random password
+#   f5_validate_certs                     false (self-signed)
+#   f5_postcheck_drift_enabled            true
+#   f5_postcheck_version_check_enabled    false (immutable: drift-only)
+#   f5_postcheck_terraform_env_path       absolute path to terraform/immutable-track
+#   immutable_drain_window_seconds        from terraform var.drain_window_seconds
+#   immutable_dns_cutover_record_name     from terraform var.dns_cutover_record_name
+#
+# The integration wrapper invokes this playbook with --limit immutable_new
+# (the only group in the rendered inventory). Direct manual invocation:
+#
+#   ansible-playbook -i build/integration-immutable/inventory.yml \
+#     ansible/playbooks/immutable-cutover.yml --limit immutable_new
+
+- name: NexusF5 immutable-track cutover
+  hosts: "{{ target_group | default('immutable_new') }}"
+  gather_facts: false
+  any_errors_fatal: true
+
+  tasks:
+    # Synthetic validation — Phase 1: the new VE answers iControl REST.
+    # If the wrapper's TCP+HTTP probe path was correct, this should be a
+    # no-op success. Failure here means /mgmt/tm/sys/version went away
+    # between the wrapper's probe and the playbook starting — a
+    # narrow but real failure mode.
+    - name: Cutover | synthetic validation — version probe
+      # raw-icontrol-rest
+      # GET /mgmt/tm/sys/version
+      ansible.builtin.uri:
+        url: "{{ f5_api_base_url }}/mgmt/tm/sys/version"
+        method: GET
+        user: "{{ f5_api_user }}"
+        password: "{{ f5_api_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ f5_validate_certs }}"
+        return_content: true
+        timeout: "{{ f5_api_timeout | default(30) }}"
+      register: version_probe
+      tags: [validate]
+
+    - name: Cutover | log running version
+      ansible.builtin.debug:
+        msg: >-
+          {{ inventory_hostname }} running
+          {{ (version_probe.json.entries.values() | list | first).nestedStats.entries.Version.description }}
+      tags: [validate]
+
+    # Synthetic validation — Phase 2: drift gate.
+    #
+    # `terraform plan -detailed-exitcode -refresh=true` against the
+    # immutable-track root, run from the postcheck role with
+    # version_check_enabled=false. Exit 0 = the DO + AS3 declarations
+    # applied successfully. Same gate the upgrade wave uses for drift
+    # detection — one role, two callers (see f5_postcheck README).
+    #
+    # This is the load-bearing claim of the immutable track. If the
+    # do-declaration and as3-declaration modules from PR 1 had silently
+    # broken against a fresh VE, the plan would show drift here.
+    - name: Cutover | drift gate (DO + AS3 first-apply validation)
+      ansible.builtin.include_role:
+        name: f5_postcheck
+      tags: [validate, drift]
+
+    # DNS cutover stub. The terraform null_resource in
+    # terraform/immutable-track/dns_cutover.tf carries the same trigger
+    # values; this debug task is the playbook-level marker that the
+    # cutover *would* fire here, in a real wiring. ADR 004 covers why
+    # DNS-based cutover is the right shape for the immutable track and
+    # what real implementations need to honour (TTL alignment with the
+    # drain window, monitor-driven rollback, etc.).
+    - name: Cutover | DNS cutover stub
+      ansible.builtin.debug:
+        msg: |
+          ===== DNS CUTOVER STUB =====
+          {{ immutable_dns_cutover_record_name | default('vip.example.invalid') }}
+            -> {{ ansible_host }}
+          (no real DNS change in this demonstration)
+          See terraform/immutable-track/dns_cutover.tf for where Route 53
+          or a third-party provider would plug in.
+          See docs/decisions/004-cutover-safety.md for the rationale.
+          ============================
+      tags: [cutover]
+
+    # Drain window. In a real deployment this is the time the (now
+    # ex-active) old VE remains available so any in-flight connections
+    # drain naturally. In this demonstration there is no old VE, so the
+    # pause exists to (a) demonstrate the pattern shape and (b) prove
+    # the integration wrapper handles the round-trip cleanly even when
+    # the playbook is non-trivially long.
+    #
+    # The integration wrapper sets immutable_drain_window_seconds=30 by
+    # default so the 45-minute round-trip stays inside its wall clock;
+    # production-shape callers honour terraform var.drain_window_seconds
+    # (default 1800).
+    #
+    # Skipped entirely when the value is 0, so the test path can opt out
+    # without ansible's pause module printing its 0-second banner.
+    - name: Cutover | drain window pause
+      ansible.builtin.pause:
+        seconds: "{{ immutable_drain_window_seconds | int }}"
+        prompt: >-
+          Draining (conceptual) old VE for
+          {{ immutable_drain_window_seconds | int }} s
+          (immutable-track demonstration; no real traffic).
+      when: (immutable_drain_window_seconds | int) > 0
+      tags: [drain]
+
+    - name: Cutover | drain complete — old VE may now be destroyed
+      ansible.builtin.debug:
+        msg: |
+          Drain window complete after
+          {{ immutable_drain_window_seconds | default(0) | int }} s.
+          The integration wrapper now proceeds to terraform destroy.
+      tags: [drain]

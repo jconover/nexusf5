@@ -1,10 +1,14 @@
 ---
-# f5_postcheck — post-upgrade validation.
+# f5_postcheck — DO/AS3 validation. Two callers, two shapes:
 #
-# Two gates, both hard:
-#   1. Running version matches f5_target_version.
-#   2. `terraform plan -detailed-exitcode` against the env's DO/AS3
-#      declarations exits 0 (no drift).
+#   * Upgrade flow (default): both gates run.
+#       1. Running version matches f5_target_version.
+#       2. `terraform plan -detailed-exitcode` exits 0 (no drift).
+#   * Immutable track first-apply: only the drift gate runs.
+#       Set f5_postcheck_version_check_enabled=false. There is no "target
+#       version" for a freshly-provisioned VE; "did the apply succeed" is
+#       answered by `plan -detailed-exitcode` returning 0 immediately
+#       after `apply`. Same exit-code semantics as drift detection.
 #
 # The mock chaos flag `chaos.drift_postcheck` is wired into the DO/AS3 read
 # endpoints so integration tests can prove the drift gate fires correctly.
@@ -22,11 +26,13 @@
     return_content: true
     timeout: "{{ f5_api_timeout }}"
   register: f5_postcheck_version
+  when: f5_postcheck_version_check_enabled | bool
   tags: [postcheck]
 
 - name: Postcheck | set fact
   ansible.builtin.set_fact:
     f5_postcheck_fact_version: "{{ (f5_postcheck_version.json.entries.values() | list | first).nestedStats.entries.Version.description }}"
+  when: f5_postcheck_version_check_enabled | bool
   tags: [postcheck]
 
 - name: Postcheck | assert version matches target
@@ -37,6 +43,7 @@
       Postcheck version mismatch on {{ inventory_hostname }}:
       running {{ f5_postcheck_fact_version }}, expected {{ f5_target_version }}.
     success_msg: "Postcheck version ok ({{ f5_postcheck_fact_version }})"
+  when: f5_postcheck_version_check_enabled | bool
   tags: [postcheck]
 
 - name: Postcheck | run terraform plan -detailed-exitcode (DO/AS3 drift gate)

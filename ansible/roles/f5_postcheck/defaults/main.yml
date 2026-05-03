@@ -1,5 +1,8 @@
 ---
-# f5_target_version is required (no default; set per-wave or in playbook vars).
+# f5_target_version is required when f5_postcheck_version_check_enabled is
+# true (the upgrade-flow default). The immutable track flips that to false —
+# there's no "target version" for a freshly-provisioned VE, only "did the
+# DO/AS3 apply correctly", which is exactly what the drift gate answers.
 
 # Path to the terraform environment whose state owns this device's DO/AS3
 # config. Defaults to the lab env so a freshly-cloned repo running the mock
@@ -13,3 +16,11 @@ f5_postcheck_terraform_binary: terraform
 # care about the version assertion). Set true to gate on terraform's exit
 # code.
 f5_postcheck_drift_enabled: true
+
+# Run the running-version assertion. True for the upgrade flow (the device
+# must be at f5_target_version after a wave). False for the immutable track
+# where validation = "did terraform apply succeed", which is the drift gate
+# alone — `plan -detailed-exitcode` returning 0 immediately after `apply`
+# is the first-apply success signal. Same exit-code semantics as drift
+# detection; one role, two callers.
+f5_postcheck_version_check_enabled: true

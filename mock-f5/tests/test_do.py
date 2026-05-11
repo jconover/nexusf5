@@ -7,16 +7,12 @@ DO_BASE = "/bigip-lab-01/mgmt/shared/declarative-onboarding"
 
 MIN_DECL = {
     "schemaVersion": "1.40.0",
-    "class": "DO",
-    "declaration": {
-        "schemaVersion": "1.40.0",
-        "class": "Device",
-        "Common": {
-            "class": "Tenant",
-            "myHostname": {
-                "class": "System",
-                "hostname": "bigip-lab-01.local",
-            },
+    "class": "Device",
+    "Common": {
+        "class": "Tenant",
+        "myHostname": {
+            "class": "System",
+            "hostname": "bigip-lab-01.local",
         },
     },
 }
@@ -86,16 +82,12 @@ def test_do_rejects_non_fqdn_hostname(client: TestClient, monkeypatch: pytest.Mo
     monkeypatch.setenv("MOCK_DO_TASK_SECONDS", "0")
     bad_decl = {
         "schemaVersion": "1.40.0",
-        "class": "DO",
-        "declaration": {
-            "schemaVersion": "1.40.0",
-            "class": "Device",
-            "Common": {
-                "class": "Tenant",
-                "myHostname": {
-                    "class": "System",
-                    "hostname": "bigip-lab-01",  # no dot — rejected by real F5
-                },
+        "class": "Device",
+        "Common": {
+            "class": "Tenant",
+            "myHostname": {
+                "class": "System",
+                "hostname": "bigip-lab-01",  # no dot — rejected by real F5
             },
         },
     }
@@ -124,16 +116,12 @@ def test_do_accepts_fqdn_hostname(client: TestClient, monkeypatch: pytest.Monkey
     monkeypatch.setenv("MOCK_DO_TASK_SECONDS", "0")
     good_decl = {
         "schemaVersion": "1.40.0",
-        "class": "DO",
-        "declaration": {
-            "schemaVersion": "1.40.0",
-            "class": "Device",
-            "Common": {
-                "class": "Tenant",
-                "myHostname": {
-                    "class": "System",
-                    "hostname": "bigip-lab-01.nexusf5.local",
-                },
+        "class": "Device",
+        "Common": {
+            "class": "Tenant",
+            "myHostname": {
+                "class": "System",
+                "hostname": "bigip-lab-01.nexusf5.local",
             },
         },
     }

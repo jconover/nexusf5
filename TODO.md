@@ -104,38 +104,27 @@ Trigger `upgrade-canary.yml` manually → 5 mock devices upgrade serially → ar
 - [x] `terraform/modules/as3-declaration/` — same pattern for AS3 via `bigip_as3` resource (PR 1)
 - [x] `terraform/environments/lab/` — points at mock server (via the nginx adapter sidecar in `mock-f5/proxy/`, since the F5 provider has no path-prefix support) with 5 canary devices wired up (PR 1)
 - [x] Real DO/AS3 drift check in `f5_postcheck` role: runs `terraform plan -detailed-exitcode`, fails if exit code indicates drift (PR 1)
-- [ ] `terraform/modules/ve-instance/` — AWS BIG-IP VE provisioning (AMI lookup, VPC, subnets, security groups, IAM) (PR 2)
-- [ ] `terraform/immutable-track/` — end-to-end immutable example: (PR 2)
-  - [ ] Provisions a new VE at target version
-  - [ ] Applies same DO/AS3 declarations (proves portability)
-  - [ ] Outputs new VE endpoint for synthetic validation
-- [ ] `ansible/playbooks/immutable-cutover.yml` — synthetic validation + DNS cutover stub + old-VE-drain (PR 2)
-- [ ] Integration test: `make integration` spins up a real AWS VE pair (tagged `purpose=nexusf5-test`, `auto-destroy=true`), runs preflight + one-shot upgrade round-trip, tears down. Runs in GitHub Actions on `workflow_dispatch` only — not on PRs (cost control). (PR 2)
-- [ ] **Pre-merge for PR 2:** drop `refs/heads/phase-4-aws-ve` from `trusted_branch_refs` in `terraform/environments/shared/variables.tf`, re-apply, verify trust policy via `test-aws-auth.yml` from `main`. A feature branch in the trust policy is permanent attack surface — branch can be re-created post-merge by anyone with write access and the policy still accepts it.
-- [ ] ADR: `docs/decisions/003-hybrid-vs-immutable.md` explaining when each applies (PR 3 — renumbered from `001-hybrid-vs-immutable.md` because `001-mock-topology.md` already exists)
+- [x] `terraform/modules/ve-instance/` — AWS BIG-IP VE provisioning (AMI lookup, VPC, subnets, security groups, IAM) (PR 2)
+- [x] Integration test: `make integration` spins up a real AWS VE pair (tagged `purpose=nexusf5-test`, `auto-destroy=true`), runs preflight + one-shot upgrade round-trip, tears down. Runs in GitHub Actions on `workflow_dispatch` only — not on PRs (cost control). (PR 2)
 - [x] ADR: `docs/decisions/002-terraform-scope.md` on why Terraform owns config but not upgrade flow (PR 1)
+- [x] ADR: `docs/decisions/003-hybrid-vs-immutable.md` — decision framework: when in-place hybrid upgrade applies vs. when immutable cutover applies (PR-A `chore/mock-fidelity-and-adrs`)
+- [x] ADR: `docs/decisions/004-cutover-safety.md` — design space for the immutable pattern: drain windows, rollback triggers, why DNS-based cutover (PR-A `chore/mock-fidelity-and-adrs`)
+- [x] ADR: `docs/decisions/006-mock-contract-fidelity.md` — the mock validates request bodies against F5's published JSON schemas (DO 1.47.0, AS3 3.51.0); vendored under `mock-f5/schemas/` with provenance + refresh protocol (PR-A `chore/mock-fidelity-and-adrs`)
 
 ### Done when
 
-`cd terraform/environments/lab && terraform apply` configures the mock devices with DO/AS3. An upgrade run ends with zero Terraform drift. The immutable track provisions, configures, and cuts over a second mock instance. `make integration` runs a real AWS VE round-trip and returns clean.
+`cd terraform/environments/lab && terraform apply` configures the mock devices with DO/AS3. An upgrade run ends with zero Terraform drift. `make integration` runs a real AWS VE round-trip and returns clean.
+
+**Phase 4 closed** at PR 2 (real-VE integration on `main`) + PR-A `chore/mock-fidelity-and-adrs` (mock contract fidelity + ADRs 003, 004, 006). The immutable track was prototyped end-to-end on `phase-4-immutable-track` and closed unmerged after architectural review surfaced repeated bug patterns indicating mismatch between the prototype and the project's actual job-target (in-place LTM fleet upgrade orchestration). Durable artifacts — ADRs 003, 004, 006 and the mock contract-fidelity work — were salvaged into PR-A. See PR 8's closing comment for the full rationale. The trust-policy debt (dropping `refs/heads/phase-4-aws-ve` from `trusted_branch_refs` in `terraform/environments/shared/`) is tracked in PR-B as a follow-up.
 
 ---
 
-## Phase 5 — NGINX modernization + observability + polish
+## Phase 5 — Observability + portfolio polish
 
-**Goal:** NGINX track, real Grafana dashboards, portfolio-grade docs. Make the repo presentable.
+**Goal:** Real Grafana dashboards, portfolio-grade docs. Make the repo presentable.
 
 ### Tasks
 
-- [ ] `nginx/source-bigip-config/` — representative BIG-IP LTM VIP (AS3 declaration): pool of 3 backends, TLS SNI, one iRule, persistence profile
-- [ ] `nginx/target-nginx-config/` — equivalent NGINX Plus config. Document iRule equivalence with caveats (what maps cleanly, what doesn't, what's NGINX Plus-only vs OSS).
-- [ ] `nginx/cutover-playbook/` — Ansible playbook:
-  - [ ] Deploy NGINX config
-  - [ ] Synthetic validation (curl checks against new endpoint)
-  - [ ] Drain sessions on BIG-IP VIP via iControl REST
-  - [ ] DNS cutover stub (comment where real provider integration would plug in)
-  - [ ] BIG-IP VIP remains available as fallback for defined window
-- [ ] ADR: `docs/decisions/003-when-to-modernize-to-nginx.md` — decision framework for which workloads are good candidates
 - [ ] `observability/prometheus/prometheus.yml` — scrape config for mock `/metrics` and Pushgateway
 - [ ] `observability/grafana/dashboards/fleet-upgrade.json` — real dashboard: stacked bar by wave/status, per-device timing histogram, failure heatmap, rollback timeline
 - [ ] `docker-compose.observability.yml` — full stack up: mock(s) + Prometheus + Pushgateway + Grafana with dashboard pre-loaded
@@ -154,7 +143,7 @@ Trigger `upgrade-canary.yml` manually → 5 mock devices upgrade serially → ar
 
 ### Done when
 
-`make demo` produces a running local system with a populated Grafana dashboard in under 10 minutes from a clean clone. The README sells the project in 30 seconds. Every capability claim in the README has a concrete repo pointer. The NGINX example cuts over a mock workload cleanly.
+`make demo` produces a running local system with a populated Grafana dashboard in under 10 minutes from a clean clone. The README sells the project in 30 seconds. Every capability claim in the README has a concrete repo pointer.
 
 ---
 
@@ -162,6 +151,7 @@ Trigger `upgrade-canary.yml` manually → 5 mock devices upgrade serially → ar
 
 Only after all five phases are done and the repo is portfolio-polished.
 
+- NGINX modernization (BIG-IP LTM → NGINX Plus cutover example) — considered as a Phase 5 deliverable, deferred indefinitely. Project focus narrowed to in-place LTM upgrade orchestration; the modernization demonstration is off-target relative to that focus. ADR 003 captures the hybrid-vs-immutable framework that a reader needs.
 - [ ] BIG-IQ integration path sketch (ADR only, no code)
 - [ ] F5OS (rSeries) upgrade flow notes (ADR only)
 - [ ] Blue/green at the GTM level for the immutable track

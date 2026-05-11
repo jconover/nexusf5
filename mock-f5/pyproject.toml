@@ -9,6 +9,11 @@ dependencies = [
     "uvicorn[standard]>=0.30.0",
     "pydantic>=2.9.0",
     "prometheus-client>=0.20.0",
+    # Schema validation for DO / AS3 declaration bodies posted to the mock.
+    # See schemas/README.md + ADR 006 — the mock enforces F5's published
+    # vendor schemas so a declaration that real F5 would reject fails at
+    # `make test`, not on a cloud round-trip.
+    "jsonschema>=4.20.0",
 ]
 
 [dependency-groups]

@@ -27,6 +27,9 @@ dev = [
     # to parse ansible/inventory/hosts.yml without invoking ansible.
     "pyyaml>=6.0",
     "types-pyyaml>=6.0",
+    # Mypy stubs for the jsonschema runtime dep — required by `mypy --strict`
+    # in CI; matches the `jsonschema>=4.20.0` runtime pin above.
+    "types-jsonschema>=4.20.0",
 ]
 
 [tool.uv]

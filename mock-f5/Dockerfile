@@ -26,6 +26,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-install-project --no-dev
 
 COPY app ./app
+COPY schemas ./schemas
 
 EXPOSE 8080
 

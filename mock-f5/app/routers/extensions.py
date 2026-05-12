@@ -22,6 +22,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request, Response, status
 
 from app.deps import DeviceDep
+from app.schemas import validate_as3_declaration, validate_do_declaration
 from app.state import DeviceState
 
 router = APIRouter(prefix="/{hostname}/mgmt/shared")
@@ -149,14 +150,16 @@ def as3_settings(device: DeviceDep) -> Any:
 
 # POST /mgmt/shared/declarative-onboarding
 # Provider parses task ID from JSON `id` field. Returns 202 + RUNNING result.
-# Body is read as raw JSON: real DO declarations are deeply nested and the
-# F5 provider wraps the user's `do_json` in extra envelope fields the mock
-# would have to enumerate to validate strictly. Permissive ingress is fine
-# because the mock's job is to round-trip the body, not to validate F5
-# schema (`/info` already advertises the supported schema range).
 # Both `/declarative-onboarding` and `/declarative-onboarding/` are registered
 # because the F5 provider POSTs the trailing-slash form and does not follow
 # 307 redirects on POST.
+#
+# Validation against F5 DO v1.47.0's published schema runs before the task
+# is started — same enforcement real BIG-IP applies, matching the contract
+# established in ADR 006 (mock contract fidelity). PR 3 iter-8 showed the
+# cost of permissive ingress: a malformed `class: "DO"` wrapper shape was
+# accepted here for the entire PR 1-3 history then rejected on the first
+# cloud round-trip. Validating at the mock layer fails closed at `make test`.
 # https://clouddocs.f5.com/products/extensions/f5-declarative-onboarding/latest/apidocs.html
 @router.post("/declarative-onboarding")
 @router.post("/declarative-onboarding/")
@@ -164,6 +167,12 @@ async def do_post(device: DeviceDep, request: Request) -> Any:
     if (blocked := _reboot_guard(device)) is not None:
         return blocked
     declaration = await _parse_declaration(request)
+    if (err := validate_do_declaration(declaration)) is not None:
+        return Response(
+            content=_json_dumps(err),
+            media_type="application/json",
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
     task = device.start_do_task(declaration)
     self_link = f"https://{device.hostname}/mgmt/shared/declarative-onboarding/task/{task.id}"
     return Response(
@@ -248,9 +257,11 @@ def do_get(device: DeviceDep) -> Response:
 # Provider does respRef["id"].(string) with no nil check — `id` MUST be present
 # or the provider crashes. `?async=true` is accepted but informational; the
 # mock is always async.
-# Body parsed as raw JSON for the same reason as the DO endpoint: real AS3
-# declarations are large and the provider wraps them in an envelope (action
-# + persist + declaration) that doesn't match a single Pydantic shape.
+#
+# Validation against F5 AS3 v3.51.0's published as3-request-schema.json runs
+# before the task is started. AS3's root schema is a `oneOf` over direct
+# ADC, ADC_Array, the AS3 wrapper, and patch shapes — any one branch is
+# acceptance. See ADR 006 for the mock-contract-fidelity rationale.
 # https://clouddocs.f5.com/products/extensions/f5-appsvcs-extension/latest/refguide/apidocs.html
 @router.post("/appsvcs/declare/{tenant}")
 @router.post("/appsvcs/declare/{tenant}/")
@@ -258,6 +269,12 @@ async def as3_post(device: DeviceDep, tenant: str, request: Request) -> Any:
     if (blocked := _reboot_guard(device)) is not None:
         return blocked
     declaration = await _parse_declaration(request)
+    if (err := validate_as3_declaration(declaration)) is not None:
+        return Response(
+            content=_json_dumps(err),
+            media_type="application/json",
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
     task = device.start_as3_task(tenant, declaration)
     self_link = f"https://{device.hostname}/mgmt/shared/appsvcs/task/{task.id}"
     payload = {

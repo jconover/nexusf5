@@ -104,12 +104,14 @@ pattern by default. An inline comment in `extensions.py` would document the
 DO/AS3 specific call sites; the principle would not survive a refactor
 that moves those handlers. The ADR is the durable contract.
 
-## Why this is bigger than ADR 005
+## Why this is bigger than a single-bug fix
 
-ADR 005 documents a workaround for an upstream bug in
-`terraform-provider-bigip v1.26.0` (the nil-pointer panic on cancellation).
-That workaround is temporary debt with a clear removal trigger when the
-upstream fix ships.
+The immutable-track work surfaced an upstream defect in
+`terraform-provider-bigip v1.26.0` — a nil-pointer panic on cancelled
+`ApplyResourceChange`, filed at
+[F5Networks/terraform-provider-bigip#1158](https://github.com/F5Networks/terraform-provider-bigip/issues/1158).
+That class of finding is a discrete workaround for a specific upstream bug,
+with a clear removal trigger when the upstream fix ships.
 
 ADR 006 is not about a single upstream bug. It is a structural decision
 about the mock's contract: **the mock's job is not just to round-trip
@@ -180,9 +182,7 @@ periodically (e.g. each Phase 5 refresh) re-confirms continued coverage.
 
 ## Related decisions
 
-- **ADR 005** (AS3 apply-race workaround): the immediate cause of PR 3
-  iter-7. ADR 005 fixed the upstream defect class; ADR 006 fixes the
-  structural class that allowed the original bug to land.
+- **Upstream issue [F5Networks/terraform-provider-bigip#1158](https://github.com/F5Networks/terraform-provider-bigip/issues/1158)** — the nil-pointer panic on cancelled `ApplyResourceChange` that surfaced during the immutable-track work (the immediate cause of PR 3 iter-7). That bug is a specific upstream defect; ADR 006 fixes the structural class that allowed the mock to accept malformed declarations in the first place.
 - **CLAUDE.md** ("Everything testable without a real BIG-IP"): ADR 006 is
   the operational definition of "testable" — the mock must enforce the
   same contract real F5 enforces.

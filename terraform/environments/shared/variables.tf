@@ -29,15 +29,9 @@ variable "github_oidc_role_name" {
 
 variable "trusted_branch_refs" {
   type        = list(string)
-  description = "Branch refs that may assume the GHA role without an environment context. main always; the active feature branch during PR-2 iteration so the auth-test workflow can run pre-merge. Trim back to ['main'] before merging PR 2."
-  # TODO(pr-2-merge): drop "refs/heads/phase-4-aws-ve" before merge. A
-  # feature branch in the trust policy is permanent attack surface — the
-  # branch can be re-created with the same name post-merge by anyone with
-  # repo write access, and the trust policy would still accept it. See
-  # TODO.md Phase 4 PR 2 wrap-up.
+  description = "Branch refs that may assume the GHA role without an environment context. Scoped to `main` only — feature branches go through the named environments in `trusted_environments` (which enforce environment protection rules) rather than being added here. A branch ref in the trust policy is permanent attack surface: any branch with the same name re-created post-merge would still be accepted."
   default = [
     "refs/heads/main",
-    "refs/heads/phase-4-aws-ve",
   ]
 }
 

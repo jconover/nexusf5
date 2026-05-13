@@ -22,6 +22,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request, Response, status
 
 from app.deps import DeviceDep
+from app.fixtures.do import inspect as inspect_fixture
 from app.schemas import validate_as3_declaration, validate_do_declaration
 from app.state import DeviceState
 
@@ -251,6 +252,34 @@ def do_get(device: DeviceDep) -> Response:
         media_type="application/json",
         status_code=status.HTTP_200_OK,
     )
+
+
+# GET /mgmt/shared/declarative-onboarding/inspect
+# DO's brownfield-extraction primitive: returns a Device declaration matching
+# the device's *current live configuration*, regardless of how that
+# configuration was created. Sibling endpoint to GET /mgmt/shared/
+# declarative-onboarding (which returns only what DO itself POSTed). Available
+# since DO 1.7.0 per F5 docs.
+#
+# The response is a JSON ARRAY (matches F5's task-envelope wrapping pattern for
+# /mgmt/shared/ endpoints — same as `do_info` above). Each element wraps a
+# Result envelope around a `class: "DO"` outer that contains a `class:
+# "Device"` inner declaration. This is the documented F5 contract for
+# /inspect specifically; it is NOT the ADR 006 POST-body wrapper bug — those
+# are different shapes for different verbs on the same path family.
+#
+# Per ADR 007 §Decision #1, the brownfield extractor *consumes* this endpoint
+# rather than reinventing system-DO extraction. The fixture under
+# app/fixtures/do/inspect.py carries the upstream citation and is the source
+# of truth for the response shape.
+#
+# https://clouddocs.f5.com/products/extensions/f5-declarative-onboarding/latest/do-endpoint-methods.html
+# https://clouddocs.f5.com/products/extensions/f5-declarative-onboarding/latest/http-methods.html
+@router.get("/declarative-onboarding/inspect")
+def do_inspect(device: DeviceDep) -> Any:
+    if (blocked := _reboot_guard(device)) is not None:
+        return blocked
+    return inspect_fixture.response(device.hostname)
 
 
 # POST /mgmt/shared/appsvcs/declare/{tenant}

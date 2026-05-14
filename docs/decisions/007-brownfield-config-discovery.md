@@ -190,3 +190,73 @@ Test (1) is the workhorse: it runs in milliseconds, requires no network, and for
 - `mock-f5/schemas/` — DO 1.47.0 and AS3 3.51.0 schemas. The extractor targets these versions.
 - `tools/brownfield/` — implementation lives here (to be created in the Phase 5 PR following this ADR's review).
 - Upstream: [DO `/inspect` docs](https://clouddocs.f5.com/products/extensions/f5-declarative-onboarding/latest/http-methods.html), [AS3 API reference](https://clouddocs.f5.com/products/extensions/f5-appsvcs-extension/latest/refguide/as3-api.html), [`F5Networks/bigip` provider](https://registry.terraform.io/providers/F5Networks/bigip/latest/docs), [`f5-automation-config-converter`](https://github.com/f5devcentral/f5-automation-config-converter).
+
+## Addendum 2026-05-13: AS3 tenant naming constraint
+
+Surfaced during Phase 5 PR-1 Checkpoint 3 pre-flight. Direct schema verification
+established that AS3 3.51.0 has no mechanism for logical-vs-physical tenant
+separation:
+
+- AS3 source schema, Tenant class definition: properties are `class`, `label`,
+  `remark`, `verifiers`, `enable`, `defaultRouteDomain`, `Shared`, `constants`,
+  `controls`, `optimisticLockKey`. **No `partition` / `physicalPartition` /
+  `partitionPattern` field exists.**
+  [core-schema.json L224-280 @ v3.51.0](https://github.com/F5Networks/f5-appsvcs-extension/blob/v3.51.0/src/schema/latest/core-schema.json)
+- F5 clouddocs composing-a-declaration: *"The highest level class is the
+  tenant, which becomes a partition on the BIG-IP. ... The partition name is
+  the name you give the tenant in the declaration."*
+- F5 clouddocs best-practices: *"BIG-IP AS3 tenant access behavior is the
+  same as BIG-IP partition behavior."*
+
+Implication: the AS3 tenant name in a brownfield-extracted declaration MUST
+equal the F5 partition name being adopted. A renamed tenant (e.g.
+`bigip_lab_01_Common` intended to wrap `/Common`) would cause AS3 to CREATE
+a new partition matching the rename, leaving the original `/Common` untouched
+— producing two copies of every extracted object on the device and breaking
+the apply-no-op adoption semantics this ADR depends on.
+
+### Updated decision
+
+Literal tenant naming. F5 partition `Common` → AS3 tenant `Common`.
+Multi-device disambiguation moves to the Terraform RESOURCE-NAME layer:
+
+```hcl
+resource "bigip_as3" "bigip_lab_01_Common" {
+  provider = bigip.bigip_lab_01
+  as3_json = file("${path.module}/extracted/bigip-lab-01/as3.json")
+  # declaration inside has tenant `Common`, matching /Common on the device
+}
+```
+
+Two devices extracting `/Common` produce two Terraform resources
+(`bigip_as3.bigip_lab_01_Common`, `bigip_as3.bigip_lab_02_Common`), each
+binding to its own provider/device, both containing an AS3 tenant named
+`Common`. No tenant-name collision; Terraform's resource-name namespace
+handles the disambiguation.
+
+Terraform resource identifier normalization: F5 device hostnames contain
+hyphens per `CLAUDE.md` (`bigip-{site}-{number}`). HCL identifier syntax
+permits hyphens ([terraform.io/language/syntax/configuration](https://developer.hashicorp.com/terraform/language/syntax/configuration))
+but project convention is snake_case to match `terraform/modules/`. The
+emitter normalizes `bigip-lab-01` + `Common` → `bigip_lab_01_Common` for
+the resource name only. Hostname stays `bigip-lab-01` for provider
+configuration and API calls; AS3 tenant stays `Common` for the declaration
+body.
+
+### Tradeoff accepted
+
+AS3 takes ownership of the adopted F5 partition. Anything in `/Common` that
+the brownfield extractor did NOT extract (ASM/APM objects per §Out of
+scope, future GUI/tmsh additions, /Common objects matching the ACC built-in
+filter) becomes drift relative to the declarative source of truth. The
+emitter's main README and the per-extraction README make this explicit so
+operators understand the adoption boundary.
+
+### Why this is an addendum, not a new ADR
+
+ADR 007 §Decision #3 already commits to emitting Terraform import blocks
+pointing at `bigip_as3` resources with partition-CSV IDs. The new finding
+is a CONSTRAINT on tenant naming that shapes how that decision is
+implemented — it doesn't contradict the original. The addendum records the
+schema verification and the resource-naming disambiguation pattern so
+future contributors don't reopen this question.

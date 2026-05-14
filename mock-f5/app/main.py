@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.routers import chaos, extensions, icontrol
+from app.routers import chaos, extensions, icontrol, ltm
 from app.state import build_store_from_env, build_store_from_manifest
 
 
@@ -40,5 +40,6 @@ app = FastAPI(
 )
 
 app.include_router(icontrol.router)
+app.include_router(ltm.router)
 app.include_router(extensions.router)
 app.include_router(chaos.router)

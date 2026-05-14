@@ -1,0 +1,63 @@
+[project]
+name = "nexusf5-brownfield"
+version = "0.1.0"
+description = "Brownfield config-discovery CLI: walk a live BIG-IP via iControl REST and emit AS3/DO declarations + Terraform import blocks. See docs/decisions/007-brownfield-config-discovery.md."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.27.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.6.9",
+    "mypy>=1.11.0",
+    # The mock-f5 FastAPI app is imported by walker tests via httpx
+    # ASGITransport so the walker's HTTP surface runs hermetically
+    # in-process. mock-f5's own deps (fastapi, jsonschema, etc.) are
+    # pulled in transitively as a path source below.
+    "fastapi>=0.115.0",
+    "pydantic>=2.9.0",
+    "jsonschema>=4.20.0",
+    "types-jsonschema>=4.20.0",
+    "prometheus-client>=0.20.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "PT", "SIM", "RUF"]
+ignore = ["N818"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["brownfield"]
+# mock-f5/app on the search path so brownfield/cli.py's lazy import of
+# app.schemas (the ADR 006 validators) type-checks. Same pattern
+# observability/ingest uses for its mypy_path. mock-f5's `app` is the
+# top-level package since mock-f5/pyproject.toml uses `package = false`.
+mypy_path = "../../mock-f5"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Two paths on sys.path:
+#   - "." for `from brownfield.client import ...` in tests
+#   - "../../mock-f5" for `from app.main import app` so tests can wire
+#     an in-process httpx.ASGITransport against the mock without
+#     spinning up a real server or shipping mock-f5 as a packaged dep.
+pythonpath = [".", "../../mock-f5"]
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning",
+]

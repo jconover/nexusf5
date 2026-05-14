@@ -43,6 +43,11 @@ quote-style = "double"
 python_version = "3.12"
 strict = true
 files = ["brownfield"]
+# mock-f5/app on the search path so brownfield/cli.py's lazy import of
+# app.schemas (the ADR 006 validators) type-checks. Same pattern
+# observability/ingest uses for its mypy_path. mock-f5's `app` is the
+# top-level package since mock-f5/pyproject.toml uses `package = false`.
+mypy_path = "../../mock-f5"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

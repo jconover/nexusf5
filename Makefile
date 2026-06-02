@@ -1,5 +1,5 @@
 .PHONY: help install-deps lint lint-ci test test-unit integration integration-debug mock-up mock-down mock-logs mock-build clean \
-        terraform-fmt terraform-validate lab-up lab-down shared-up shared-down
+        terraform-fmt terraform-validate lab-up lab-down shared-up shared-down immutable-down destroy-all aws-sweep
 
 # Single source of truth for the uv version. The workflow reads the same
 # file via setup-uv's version-file input; the Dockerfile takes it as a
@@ -101,6 +101,21 @@ shared-up: ## Apply the account-shared terraform env (budget alarm + GitHub OIDC
 
 shared-down: ## Destroy the shared terraform env (rarely needed; long-lived by design)
 	cd terraform/environments/shared && terraform destroy
+
+immutable-down: ## Destroy the immutable-track terraform env (new-VE + cutover stack)
+	cd terraform/immutable-track && terraform init -input=false && terraform destroy -auto-approve
+
+destroy-all: ## Tear down ALL billable AWS infra (integration + immutable-track) and sweep us-east-2 for orphans. Leaves shared (IAM/budget) and lab (device config) untouched.
+	@echo "==> Destroying integration env"
+	cd terraform/environments/integration && terraform init -input=false && terraform destroy -auto-approve
+	@echo "==> Destroying immutable-track env"
+	cd terraform/immutable-track && terraform init -input=false && terraform destroy -auto-approve
+	@echo "==> Sweeping us-east-2 for anything Terraform doesn't track"
+	@$(MAKE) aws-sweep
+	@echo "==> destroy-all complete. shared (IAM/budget) + lab (device config) intentionally left in place."
+
+aws-sweep: ## Read-only inventory of us-east-2 for leftover NexusF5/AWS resources (requires AWS creds)
+	./scripts/aws-sweep-us-east-2.sh
 
 clean: ## Remove caches, virtualenvs, and transient artifacts
 	rm -rf mock-f5/.venv mock-f5/.pytest_cache mock-f5/.ruff_cache mock-f5/.mypy_cache

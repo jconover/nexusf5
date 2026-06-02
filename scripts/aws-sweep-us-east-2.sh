@@ -49,6 +49,19 @@ aws ec2 describe-nat-gateways \
   --filter "Name=state,Values=available" \
   --query 'NatGateways[].{Id:NatGatewayId,Vpc:VpcId}' --output table
 
+echo "== RDS instances (bill hourly) =="
+aws rds describe-db-instances \
+  --query 'DBInstances[].{Id:DBInstanceIdentifier,Class:DBInstanceClass,Engine:Engine,Status:DBInstanceStatus}' \
+  --output table
+
+echo "== RDS clusters (Aurora; bill hourly) =="
+aws rds describe-db-clusters \
+  --query 'DBClusters[].{Id:DBClusterIdentifier,Engine:Engine,Status:Status}' --output table
+
+echo "== EFS file systems (bill on stored bytes) =="
+aws efs describe-file-systems \
+  --query 'FileSystems[].{Id:FileSystemId,Name:Name,Bytes:SizeInBytes.Value}' --output table
+
 echo
 echo "Sweep complete. Anything listed above is a candidate for cleanup."
 echo "Cross-check VPC/SG/IGW removal — they block VPC deletion if orphaned."

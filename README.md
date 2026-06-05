@@ -101,4 +101,6 @@ Run `make test-unit` for the fast dev loop (in-process, ~0.4s). Run
 - [`CLAUDE.md`](CLAUDE.md) — conventions and non-negotiables
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — problem context, two tracks, wave model,
   per-device sequence, rollback model
+- [`docs/f5-primer.md`](docs/f5-primer.md) — how BIG-IP devices work (TMOS, HA pairs,
+  boot volumes), the manual upgrade process, and the F5 modules you'd run into at a bank
 - [`docs/decisions/`](docs/decisions/) — ADRs

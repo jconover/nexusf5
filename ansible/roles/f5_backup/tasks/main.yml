@@ -7,7 +7,10 @@
 
 - name: Backup | derive UCS filename
   ansible.builtin.set_fact:
-    f5_backup_ucs_name: "{{ f5_backup_ucs_name | default('nexusf5-' + inventory_hostname + '-' + now(fmt='%Y%m%dT%H%M%S') + '.ucs', true) }}"
+    f5_backup_ucs_name: >-
+      {{ f5_backup_ucs_name
+         | default('nexusf5-' + inventory_hostname + '-'
+                   + now(fmt='%Y%m%dT%H%M%S') + '.ucs', true) }}
   tags: [backup, always]
 
 - name: Backup | save UCS

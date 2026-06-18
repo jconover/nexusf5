@@ -27,6 +27,7 @@ crash.log
 # mappings, no secrets).
 terraform/environments/shared/terraform.tfvars
 terraform/environments/integration/terraform.tfvars
+terraform/immutable-track/terraform.tfvars
 
 # Integration wrapper output dir: rendered inventory, ssh key, admin
 # password, terraform plan files. All ephemeral, all per-run, none safe

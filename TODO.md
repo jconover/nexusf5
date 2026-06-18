@@ -158,3 +158,4 @@ Only after all five phases are done and the repo is portfolio-polished.
 - [ ] Blue/green at the GTM level for the immutable track
 - [ ] Pull request that demonstrates a "bad image pulled by canary" incident end-to-end with runbook evidence
 - [ ] Recorded demo video (<3 min) embedded in README
+- [ ] Nautobot-backed fleet source-of-truth / discovery (ADR 008, Proposed) — replace the static `hosts.yml` census with Nautobot fed by a vCenter SSoT sync (VE F5s) + an iControl REST Nautobot Job (all F5s), consumed by Ansible via `networktocode.nautobot.inventory`. Inventory/state sibling to ADR 007's config discovery.
